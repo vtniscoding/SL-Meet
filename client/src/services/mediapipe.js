@@ -30,6 +30,7 @@ export function createMediaPipeHandsInstance(onResultsCallback) {
  * @param {Object} results - MediaPipe Hands output results
  */
 export function drawHandResults(ctx, results) {
+  if (!ctx || !ctx.canvas) return;
   ctx.save();
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
@@ -41,14 +42,14 @@ export function drawHandResults(ctx, results) {
 
       // Draw connections with gradient styling
       drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {
-        color: isRightHand ? '#06B6D4' : '#8B5CF6',
+        color: isRightHand ? '#5CA0F2' : '#8AB4F8',
         lineWidth: 3,
       });
 
       // Draw key landmark points
       drawLandmarks(ctx, landmarks, {
         color: '#FFFFFF',
-        fillColor: isRightHand ? '#0891B2' : '#7C3AED',
+        fillColor: isRightHand ? '#3B82F6' : '#60A5FA',
         lineWidth: 1,
         radius: 4,
       });
@@ -63,7 +64,7 @@ export function drawHandResults(ctx, results) {
  * @returns {Object} Recognized gesture info { gesture, confidence }
  */
 export function classifyGesture(landmarks) {
-  if (!landmarks || landmarks.length < 21) return { gesture: 'None', confidence: 0 };
+  if (!landmarks || landmarks.length < 21) return { gesture: '', confidence: 0 };
 
   // Helper to calculate distance between two points
   const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
@@ -88,39 +89,39 @@ export function classifyGesture(landmarks) {
 
   // Thumbs Up check
   if (thumbTip.y < landmarks[3].y && !isIndexExtended && !isMiddleExtended && !isRingExtended && !isPinkyExtended) {
-    return { gesture: 'Thumbs Up 👍', confidence: 0.95 };
+    return { gesture: 'Thumbs Up / Good', confidence: 0.95 };
   }
 
   // Open Palm / Wave check
   if (isIndexExtended && isMiddleExtended && isRingExtended && isPinkyExtended) {
-    return { gesture: 'Open Palm 🖐️ (Xin Chào)', confidence: 0.92 };
+    return { gesture: 'Hello / Open Palm', confidence: 0.92 };
   }
 
   // Peace / V-Sign check
   if (isIndexExtended && isMiddleExtended && !isRingExtended && !isPinkyExtended) {
-    return { gesture: 'Victory / Peace ✌️', confidence: 0.94 };
+    return { gesture: 'Victory / Peace', confidence: 0.94 };
   }
 
   // OK Sign check
   const thumbIndexDist = dist(thumbTip, indexTip);
   if (thumbIndexDist < 0.05 && isMiddleExtended && isRingExtended && isPinkyExtended) {
-    return { gesture: 'OK Sign 👌 (Đồng Ý)', confidence: 0.91 };
+    return { gesture: 'Agreed / OK', confidence: 0.91 };
   }
 
   // Pointing Up check
   if (isIndexExtended && !isMiddleExtended && !isRingExtended && !isPinkyExtended) {
-    return { gesture: 'Point Up ☝️', confidence: 0.89 };
+    return { gesture: 'Attention / Pointing', confidence: 0.89 };
   }
 
   // Love / Rock-On check
   if (isIndexExtended && !isMiddleExtended && !isRingExtended && isPinkyExtended) {
-    return { gesture: 'I Love You 🤟', confidence: 0.93 };
+    return { gesture: 'I Love You', confidence: 0.93 };
   }
 
   // Closed Fist check
   if (!isIndexExtended && !isMiddleExtended && !isRingExtended && !isPinkyExtended) {
-    return { gesture: 'Fist ✊ (Tạm Dừng)', confidence: 0.88 };
+    return { gesture: 'Wait / Fist', confidence: 0.88 };
   }
 
-  return { gesture: 'Tracking Hands...', confidence: 0.70 };
+  return { gesture: 'Signing...', confidence: 0.70 };
 }

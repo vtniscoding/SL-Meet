@@ -1,10 +1,22 @@
 import React, { useState } from 'react';
+import RoomView from './components/RoomView';
+import WaitingLobby from './components/room/WaitingLobby';
+import { useLocalMedia } from './hooks/useLocalMedia';
+import { useSocket } from './hooks/useSocket';
 
 export default function App() {
+  const [currentView, setCurrentView] = useState('home'); // 'home' | 'lobby' | 'room'
+  const [activeRoomId, setActiveRoomId] = useState('');
   const [showCodeInput, setShowCodeInput] = useState(false);
   const [roomCode, setRoomCode] = useState('');
 
-  // 3D Tilt Hover State & Smooth Transition
+  // Hardware Media Stream & Device State (Shared between Lobby & Room)
+  const mediaState = useLocalMedia();
+
+  // Socket connection hook
+  const { isConnected, joinRoom, leaveRoom, toggleConnection } = useSocket();
+
+  // 3D Tilt Hover State for Hero Illustration
   const [tiltStyle, setTiltStyle] = useState({
     transform: 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)',
     transition: 'transform 0.5s cubic-bezier(0.03, 0.98, 0.52, 0.99)',
@@ -17,7 +29,7 @@ export default function App() {
     const centerX = rect.width / 2;
     const centerY = rect.height / 2;
 
-    const rotateX = ((y - centerY) / centerY) * -12; // 12 deg tilt angle
+    const rotateX = ((y - centerY) / centerY) * -12;
     const rotateY = ((x - centerX) / centerX) * 12;
 
     setTiltStyle({
@@ -33,19 +45,58 @@ export default function App() {
     });
   };
 
-  const handleJoinMeeting = (e) => {
+  const handleJoinSubmit = (e) => {
     e.preventDefault();
-    if (roomCode.trim()) {
-      alert(`Joining meeting room: ${roomCode.trim()}`);
+    const targetRoom = roomCode.trim();
+    if (targetRoom) {
+      setActiveRoomId(targetRoom);
+      setCurrentView('lobby');
       setShowCodeInput(false);
       setRoomCode('');
     }
   };
 
+  const handleEnterMeetingFromLobby = () => {
+    setCurrentView('room');
+    if (!isConnected) {
+      toggleConnection();
+    }
+  };
+
+  const handleLeaveRoom = () => {
+    leaveRoom();
+    setCurrentView('home');
+    setActiveRoomId('');
+  };
+
+  // Render Waiting Lobby View
+  if (currentView === 'lobby') {
+    return (
+      <WaitingLobby
+        roomId={activeRoomId}
+        mediaState={mediaState}
+        onJoinMeeting={handleEnterMeetingFromLobby}
+        onBackHome={() => setCurrentView('home')}
+      />
+    );
+  }
+
+  // Render Room View
+  if (currentView === 'room') {
+    return (
+      <RoomView
+        roomId={activeRoomId}
+        onLeaveRoom={handleLeaveRoom}
+        mediaState={mediaState}
+      />
+    );
+  }
+
+  // Render Home View
   return (
-    <div className="w-full min-h-screen bg-white text-slate-900 flex flex-col justify-between px-8 md:px-14 lg:px-20 py-4 md:py-6 font-sans select-none overflow-x-hidden">
+    <div className="w-screen h-screen overflow-hidden bg-white text-slate-900 flex flex-col justify-between px-8 md:px-14 lg:px-20 py-4 md:py-6 font-sans select-none">
       {/* Main Hero Section & Compact Logo */}
-      <main className="w-full flex-1 flex flex-col lg:flex-row items-center justify-between gap-8 lg:gap-12 my-auto pt-2">
+      <main className="w-full flex-1 flex flex-col lg:flex-row items-center justify-between gap-8 lg:gap-12 my-auto pt-2 overflow-hidden">
         {/* Left Column: Logo, Title & Buttons */}
         <div className="w-full lg:w-[44%] xl:w-[42%] shrink-0 space-y-5">
           {/* Logo placed directly above title with tight spacing */}
@@ -73,10 +124,10 @@ export default function App() {
 
           {/* CTAs Row */}
           <div className="flex items-center space-x-4 pt-2">
-            <button className="bg-[#5CA0F2] text-white font-semibold text-sm md:text-base px-8 py-3 rounded-full shadow-sm">
+            <button className="bg-[#5CA0F2] hover:bg-[#4A8FE0] text-white font-semibold text-sm md:text-base px-8 py-3 rounded-full shadow-sm transition-colors">
               Log In
             </button>
-            <button className="bg-white border border-slate-300 text-[#5CA0F2] font-semibold text-sm md:text-base px-8 py-3 rounded-full">
+            <button className="bg-white border border-[#5CA0F2]/70 text-[#5CA0F2] hover:bg-blue-50/50 font-semibold text-sm md:text-base px-8 py-3 rounded-full transition-colors">
               Register
             </button>
           </div>
@@ -115,8 +166,8 @@ export default function App() {
         <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border border-slate-100">
             <h3 className="text-lg font-bold text-slate-900 mb-1">Join a Meeting</h3>
-            <p className="text-xs text-slate-500 mb-4">Enter the room code provided by the meeting host.</p>
-            <form onSubmit={handleJoinMeeting} className="space-y-4">
+            <p className="text-xs text-slate-500 mb-4">Enter any room ID to join or create a meeting room.</p>
+            <form onSubmit={handleJoinSubmit} className="space-y-4">
               <input
                 type="text"
                 placeholder="e.g. room-123"

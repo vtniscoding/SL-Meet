@@ -37,7 +37,7 @@ const io = new Server(httpServer, {
   transports: ['websocket', 'polling'],
 });
 
-// Store active room tracking
+// Store active room tracking: Map<roomId, Map<socketId, userMeta>>
 const rooms = new Map();
 
 io.on('connection', (socket) => {
@@ -47,25 +47,44 @@ io.on('connection', (socket) => {
   socket.on('join_room', ({ roomId, userMeta }) => {
     socket.join(roomId);
     if (!rooms.has(roomId)) {
-      rooms.set(roomId, new Set());
+      rooms.set(roomId, new Map());
     }
-    rooms.get(roomId).add(socket.id);
+
+    const roomMembers = rooms.get(roomId);
+    const existingParticipants = Array.from(roomMembers.entries()).map(([id, meta]) => ({
+      userId: id,
+      userMeta: meta || { name: `Participant ${id.slice(0, 4)}` },
+      isPresenting: meta?.isPresenting || false,
+      screenStreamId: meta?.screenStreamId || null,
+    }));
+
+    const clientMeta = userMeta || { name: `Participant ${socket.id.slice(0, 4)}` };
+    clientMeta.isPresenting = false;
+    clientMeta.screenStreamId = null;
+    roomMembers.set(socket.id, clientMeta);
 
     console.log(`[Join Room] Client ${socket.id} joined room ${roomId}`);
-    
-    // Broadcast to room members
+
+    // Send list of existing room members to the newly joined client
+    socket.emit('room_users', {
+      roomId,
+      participants: existingParticipants,
+    });
+
+    // Broadcast to existing room members about the new participant
     socket.to(roomId).emit('user_joined', {
       userId: socket.id,
       roomId,
-      userMeta: userMeta || {},
+      userMeta: clientMeta,
     });
   });
 
   socket.on('leave_room', ({ roomId }) => {
     socket.leave(roomId);
     if (rooms.has(roomId)) {
-      rooms.get(roomId).delete(socket.id);
-      if (rooms.get(roomId).size === 0) {
+      const roomMembers = rooms.get(roomId);
+      roomMembers.delete(socket.id);
+      if (roomMembers.size === 0) {
         rooms.delete(roomId);
       }
     }
@@ -81,6 +100,25 @@ io.on('connection', (socket) => {
         gesture,
         confidence,
         timestamp: timestamp || Date.now(),
+      });
+    }
+  });
+
+  // Screen Sharing Presenting Status Broadcast
+  socket.on('presenting_status', ({ roomId, isPresenting, screenStreamId }) => {
+    if (roomId && rooms.has(roomId)) {
+      const roomMembers = rooms.get(roomId);
+      if (roomMembers.has(socket.id)) {
+        const meta = roomMembers.get(socket.id);
+        meta.isPresenting = isPresenting;
+        meta.screenStreamId = screenStreamId;
+        roomMembers.set(socket.id, meta);
+      }
+      
+      socket.to(roomId).emit('peer_presenting', {
+        senderId: socket.id,
+        isPresenting,
+        screenStreamId,
       });
     }
   });
@@ -101,6 +139,13 @@ io.on('connection', (socket) => {
   socket.on('disconnecting', () => {
     for (const room of socket.rooms) {
       if (room !== socket.id) {
+        if (rooms.has(room)) {
+          const roomMembers = rooms.get(room);
+          roomMembers.delete(socket.id);
+          if (roomMembers.size === 0) {
+            rooms.delete(room);
+          }
+        }
         socket.to(room).emit('user_left', { userId: socket.id, roomId: room });
       }
     }

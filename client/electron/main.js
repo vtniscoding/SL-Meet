@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, session, desktopCapturer } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -41,6 +41,26 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // Handle WebRTC getDisplayMedia screen capture requests in Electron
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    desktopCapturer
+      .getSources({ types: ['screen', 'window'] })
+      .then((sources) => {
+        // Prefer physical monitor screens (screen:x:x) over application windows
+        const screenSource = sources.find((s) => s.id.startsWith('screen:'));
+        const targetSource = screenSource || sources.find((s) => !s.name.includes('SL-Meet')) || sources[0];
+        if (targetSource) {
+          callback({ video: targetSource });
+        } else {
+          callback({});
+        }
+      })
+      .catch((err) => {
+        console.error('Error fetching desktop capturer sources:', err);
+        callback({});
+      });
+  });
+
   createWindow();
 
   app.on('activate', () => {
@@ -58,3 +78,4 @@ app.on('window-all-closed', () => {
 
 // IPC Handler example for System / Desktop integrations
 ipcMain.handle('app-version', () => app.getVersion());
+

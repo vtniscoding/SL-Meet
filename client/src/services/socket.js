@@ -4,12 +4,17 @@ import { io } from 'socket.io-client';
 const RENDER_SOCKET_DEFAULT = 'https://sl-meet-socket.onrender.com';
 const LOCAL_SOCKET_DEFAULT = 'http://localhost:4000';
 
-export const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || RENDER_SOCKET_DEFAULT;
+export const SOCKET_URL =
+  import.meta.env.VITE_SOCKET_URL ||
+  (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? LOCAL_SOCKET_DEFAULT
+    : RENDER_SOCKET_DEFAULT);
 
 let socket = null;
 
 export const getSocket = (url = SOCKET_URL) => {
-  if (!socket) {
+  if (!socket || socket.io.uri !== url) {
+    if (socket) socket.disconnect();
     socket = io(url, {
       autoConnect: false,
       transports: ['websocket', 'polling'],
