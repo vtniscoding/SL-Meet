@@ -10,13 +10,16 @@ const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 let mainWindow = null;
 
 function createWindow() {
+  const iconPath = path.join(__dirname, '../public/assets/app-icon.png');
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 1024,
     minHeight: 680,
+    icon: iconPath,
     titleBarStyle: 'hiddenInset',
-    backgroundColor: '#0B0F19',
+    backgroundColor: '#FFFFFF',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -27,7 +30,7 @@ function createWindow() {
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
+    // mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
