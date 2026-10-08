@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: sl-meet-socket-service
+    env: node
+    region: singapore
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: CLIENT_URL
+        value: "*"
