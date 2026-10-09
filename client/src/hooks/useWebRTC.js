@@ -120,6 +120,22 @@ export function useWebRTC(roomId, localStream, screenStream, presentingUsers = {
     peerScreenStreamsRef.current = peerScreenStreams;
   }, [peerScreenStreams]);
 
+  // Cleanup peer screen streams when peer stops presenting according to socket status
+  useEffect(() => {
+    setPeerScreenStreams((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      Object.keys(next).forEach((peerId) => {
+        if (!presentingUsers[peerId]?.isPresenting) {
+          delete next[peerId];
+          delete peerScreenStreamIdRef.current[peerId];
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [presentingUsers]);
+
   // Handle remote track reception (separate camera vs screen stream)
   const handleRemoteTrack = useCallback((peerId, event) => {
     const { track, streams } = event;
@@ -143,6 +159,7 @@ export function useWebRTC(roomId, localStream, screenStream, presentingUsers = {
     }
 
     if (track.kind === 'video') {
+      const isPeerPresenting = presentingUsersRef.current[peerId]?.isPresenting === true;
       const socketKnownScreenStreamId = presentingUsersRef.current[peerId]?.screenStreamId;
       const knownCameraStreamId = peerCameraStreamIdRef.current[peerId];
       const knownScreenStreamId = peerScreenStreamIdRef.current[peerId] || socketKnownScreenStreamId;
@@ -162,21 +179,30 @@ export function useWebRTC(roomId, localStream, screenStream, presentingUsers = {
 
       if (isExplicitScreenTrack) {
         isScreenShare = true;
-        if (remoteStreamId) peerScreenStreamIdRef.current[peerId] = remoteStreamId;
-      } else if (remoteStreamId) {
-        if (knownScreenStreamId && remoteStreamId === knownScreenStreamId) {
-          isScreenShare = true;
-        } else if (knownCameraStreamId && remoteStreamId === knownCameraStreamId) {
+      } else if (remoteStreamId && knownScreenStreamId && remoteStreamId === knownScreenStreamId) {
+        isScreenShare = true;
+      } else if (remoteStreamId && knownCameraStreamId && remoteStreamId === knownCameraStreamId) {
+        isScreenShare = false;
+      } else if (isPeerPresenting) {
+        if (isCameraTrack) {
           isScreenShare = false;
-        } else if (hasCameraVideo && !isCameraTrack) {
+        } else if (hasCameraVideo) {
           isScreenShare = true;
-          peerScreenStreamIdRef.current[peerId] = remoteStreamId;
+        } else if (remoteStreamId && socketKnownScreenStreamId && remoteStreamId === socketKnownScreenStreamId) {
+          isScreenShare = true;
         } else {
           isScreenShare = false;
-          peerCameraStreamIdRef.current[peerId] = remoteStreamId;
         }
       } else {
         isScreenShare = hasCameraVideo && !isCameraTrack;
+      }
+
+      if (remoteStreamId) {
+        if (isScreenShare) {
+          peerScreenStreamIdRef.current[peerId] = remoteStreamId;
+        } else {
+          peerCameraStreamIdRef.current[peerId] = remoteStreamId;
+        }
       }
 
       if (!isScreenShare) {
@@ -192,6 +218,14 @@ export function useWebRTC(roomId, localStream, screenStream, presentingUsers = {
         });
       } else {
         // Secondary / Presentation Video Track -> Screen Share Stream!
+        track.onended = () => {
+          setPeerScreenStreams((prev) => {
+            const next = { ...prev };
+            delete next[peerId];
+            return next;
+          });
+        };
+
         setPeerScreenStreams((prev) => {
           const currentScreen = prev[peerId] || new MediaStream();
           if (!currentScreen.getVideoTracks().some((t) => t.id === track.id)) {

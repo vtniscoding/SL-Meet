@@ -50,7 +50,7 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
       
       const presentingMap = {};
       (data.participants || []).forEach(p => {
-        if (p.isPresenting) {
+        if (p && p.userId && p.isPresenting) {
           presentingMap[p.userId] = {
             isPresenting: true,
             screenStreamId: p.screenStreamId,

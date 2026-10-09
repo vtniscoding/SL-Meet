@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocalMedia } from '../hooks/useLocalMedia';
 import { useSocket } from '../hooks/useSocket';
 import { useWebRTC } from '../hooks/useWebRTC';
@@ -67,26 +67,35 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
     }
   }, [remoteGestures]);
 
-  // Broadcast screen sharing status & auto layout switch when presenting
+  const prevLocalPresentingRef = useRef(false);
+  const prevRemotePresenterRef = useRef(null);
+
+  // Broadcast screen sharing status & auto layout switch ONCE when local user starts presenting
   useEffect(() => {
     sendPresentingStatus(isScreenSharing, screenStream ? screenStream.id : null);
-    if (isScreenSharing) {
+    if (isScreenSharing && !prevLocalPresentingRef.current) {
       setLayoutMode('sidebar');
       setPinnedId('local-screen');
     }
+    prevLocalPresentingRef.current = isScreenSharing;
   }, [isScreenSharing, screenStream, sendPresentingStatus]);
 
-  // Auto switch layout when any remote peer starts presenting
+  // Auto switch layout ONCE when a new remote peer starts presenting
   useEffect(() => {
     const activePeerPresenter = Object.keys(presentingUsers).find((id) => presentingUsers[id]?.isPresenting);
-    if (activePeerPresenter) {
+    if (activePeerPresenter && activePeerPresenter !== prevRemotePresenterRef.current) {
       setLayoutMode('sidebar');
       setPinnedId(`${activePeerPresenter}-screen`);
+      prevRemotePresenterRef.current = activePeerPresenter;
+    } else if (!activePeerPresenter && prevRemotePresenterRef.current) {
+      const prevScreenId = `${prevRemotePresenterRef.current}-screen`;
+      setPinnedId((prevPinned) => (prevPinned === prevScreenId ? null : prevPinned));
+      prevRemotePresenterRef.current = null;
     }
   }, [presentingUsers]);
 
   // Meeting Room Layout Modes: 'tiled' (Auto Grid) | 'sidebar' (Thanh bên) | 'spotlight' (Tiêu điểm)
-  const [layoutMode, setLayoutMode] = useState('sidebar');
+  const [layoutMode, setLayoutMode] = useState('tiled');
   const [pinnedId, setPinnedId] = useState(null);
   const [isAiEnabled, setIsAiEnabled] = useState(false);
   const [isHandTrackingEnabled, setIsHandTrackingEnabled] = useState(false);
@@ -121,7 +130,7 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
 
   const remoteParticipants = [];
   roomUsers
-    .filter((u) => u.userId !== socketId)
+    .filter((u) => u && u.userId && u.userId !== socketId)
     .forEach((u) => {
       const peerStream = peerStreams[u.userId];
       const peerScreenStream = peerScreenStreams[u.userId];
@@ -143,7 +152,7 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
       });
 
       // 2. Peer Screen Presentation Tile (if presenting)
-      if (isPeerPresenting || peerScreenStream) {
+      if (isPeerPresenting && peerScreenStream) {
         remoteParticipants.push({
           id: `${u.userId}-screen`,
           name: `${baseName} (Presentation)`,

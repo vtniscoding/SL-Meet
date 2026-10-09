@@ -61,60 +61,6 @@ export default function MeetingControlBar({
 
       {/* Center Control Bar Container (Google Meet Dark Pill) */}
       <div className="relative bg-[#202124] px-6 py-3 rounded-full flex items-center space-x-3 shadow-2xl">
-        {/* 3-Dots Layout Selector Popup Menu */}
-        {showMoreMenu && (
-          <div
-            ref={menuRef}
-            className="absolute bottom-16 left-1/2 transform -translate-x-1/2 w-64 bg-[#28292C] rounded-2xl p-2 shadow-2xl z-50 text-slate-200 text-xs font-medium space-y-1 outline-none focus:outline-none"
-          >
-            <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-700/50">
-              Change layout
-            </div>
-
-            {/* Option 1: Tiled View */}
-            <button
-              onClick={() => handleSelectLayout('tiled')}
-              className={`w-full px-3.5 py-2.5 rounded-xl flex items-center justify-between transition-colors outline-none focus:outline-none ${
-                layoutMode === 'tiled' ? 'bg-[#3C4043] text-white font-semibold' : 'hover:bg-[#35373A] text-slate-300'
-              }`}
-            >
-              <div className="flex items-center space-x-3">
-                <Grid className="w-4 h-4 text-slate-300" />
-                <span>Tiled View</span>
-              </div>
-              {layoutMode === 'tiled' && <Check className="w-4 h-4 text-blue-400" />}
-            </button>
-
-            {/* Option 2: Sidebar View */}
-            <button
-              onClick={() => handleSelectLayout('sidebar')}
-              className={`w-full px-3.5 py-2.5 rounded-xl flex items-center justify-between transition-colors outline-none focus:outline-none ${
-                layoutMode === 'sidebar' ? 'bg-[#3C4043] text-white font-semibold' : 'hover:bg-[#35373A] text-slate-300'
-              }`}
-            >
-              <div className="flex items-center space-x-3">
-                <Columns className="w-4 h-4 text-slate-300" />
-                <span>Sidebar View</span>
-              </div>
-              {layoutMode === 'sidebar' && <Check className="w-4 h-4 text-blue-400" />}
-            </button>
-
-            {/* Option 3: Spotlight View */}
-            <button
-              onClick={() => handleSelectLayout('spotlight')}
-              className={`w-full px-3.5 py-2.5 rounded-xl flex items-center justify-between transition-colors outline-none focus:outline-none ${
-                layoutMode === 'spotlight' ? 'bg-[#3C4043] text-white font-semibold' : 'hover:bg-[#35373A] text-slate-300'
-              }`}
-            >
-              <div className="flex items-center space-x-3">
-                <Maximize2 className="w-4 h-4 text-slate-300" />
-                <span>Spotlight View</span>
-              </div>
-              {layoutMode === 'spotlight' && <Check className="w-4 h-4 text-blue-400" />}
-            </button>
-          </div>
-        )}
-
         {/* Microphone Toggle Button */}
         <button
           onClick={onToggleMic}
@@ -181,18 +127,70 @@ export default function MeetingControlBar({
           {isHandTrackingEnabled ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
         </button>
 
-        {/* 3-Dots More Options Menu Button (Layout Switcher) */}
-        <button
-          onClick={() => setShowMoreMenu((prev) => !prev)}
-          className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors outline-none focus:outline-none focus:ring-0 ${
-            showMoreMenu
-              ? 'bg-[#474B4F] text-white'
-              : 'bg-[#3C4043] hover:bg-[#474B4F] text-slate-200'
-          }`}
-          title="More options (Change layout)"
-        >
-          <MoreVertical className="w-5 h-5" />
-        </button>
+        {/* 3-Dots More Options Menu Button & Layout Selector Popup */}
+        <div className="relative" ref={menuRef}>
+          {showMoreMenu && (
+            <div className="absolute bottom-16 right-0 w-64 bg-[#28292C] rounded-2xl p-2 shadow-2xl z-50 text-slate-200 text-xs font-medium space-y-1 outline-none focus:outline-none border border-slate-700/60">
+              <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-700/50">
+                Change layout
+              </div>
+
+              {/* Option 1: Tiled View */}
+              <button
+                onClick={() => handleSelectLayout('tiled')}
+                className={`w-full px-3.5 py-2.5 rounded-xl flex items-center justify-between transition-colors outline-none focus:outline-none ${
+                  layoutMode === 'tiled' ? 'bg-[#3C4043] text-white font-semibold' : 'hover:bg-[#35373A] text-slate-300'
+                }`}
+              >
+                <div className="flex items-center space-x-3">
+                  <Grid className="w-4 h-4 text-slate-300" />
+                  <span>Tiled View</span>
+                </div>
+                {layoutMode === 'tiled' && <Check className="w-4 h-4 text-blue-400" />}
+              </button>
+
+              {/* Option 2: Sidebar View */}
+              <button
+                onClick={() => handleSelectLayout('sidebar')}
+                className={`w-full px-3.5 py-2.5 rounded-xl flex items-center justify-between transition-colors outline-none focus:outline-none ${
+                  layoutMode === 'sidebar' ? 'bg-[#3C4043] text-white font-semibold' : 'hover:bg-[#35373A] text-slate-300'
+                }`}
+              >
+                <div className="flex items-center space-x-3">
+                  <Columns className="w-4 h-4 text-slate-300" />
+                  <span>Sidebar View</span>
+                </div>
+                {layoutMode === 'sidebar' && <Check className="w-4 h-4 text-blue-400" />}
+              </button>
+
+              {/* Option 3: Spotlight View */}
+              <button
+                onClick={() => handleSelectLayout('spotlight')}
+                className={`w-full px-3.5 py-2.5 rounded-xl flex items-center justify-between transition-colors outline-none focus:outline-none ${
+                  layoutMode === 'spotlight' ? 'bg-[#3C4043] text-white font-semibold' : 'hover:bg-[#35373A] text-slate-300'
+                }`}
+              >
+                <div className="flex items-center space-x-3">
+                  <Maximize2 className="w-4 h-4 text-slate-300" />
+                  <span>Spotlight View</span>
+                </div>
+                {layoutMode === 'spotlight' && <Check className="w-4 h-4 text-blue-400" />}
+              </button>
+            </div>
+          )}
+
+          <button
+            onClick={() => setShowMoreMenu((prev) => !prev)}
+            className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors outline-none focus:outline-none focus:ring-0 ${
+              showMoreMenu
+                ? 'bg-[#474B4F] text-white'
+                : 'bg-[#3C4043] hover:bg-[#474B4F] text-slate-200'
+            }`}
+            title="More options (Change layout)"
+          >
+            <MoreVertical className="w-5 h-5" />
+          </button>
+        </div>
 
         {/* Red End Call / Leave Room Button */}
         <button
