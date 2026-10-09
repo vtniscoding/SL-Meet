@@ -1,5 +1,13 @@
 import { Hands, HAND_CONNECTIONS } from '@mediapipe/hands';
 import { drawConnectors, drawLandmarks } from '@mediapipe/drawing_utils';
+import {
+  classifyLandmarksWithDataset,
+  loadCustomDataset,
+  getDatasetSummary,
+  exportCurrentDataset,
+} from './gestureClassifier';
+
+export { loadCustomDataset, getDatasetSummary, exportCurrentDataset };
 
 /**
  * Initializes and configures MediaPipe Hands solution instance
@@ -59,28 +67,47 @@ export function drawHandResults(ctx, results) {
 }
 
 /**
- * Simple Rule-Based Gesture Classifier for Sign Language / Hand Signals
- * @param {Array} landmarks - 21 hand 3D landmarks
+ * Hybrid ASL Gesture Classifier:
+ * First uses k-NN Dataset Vector Matching (Kaggle/Colab dataset loader),
+ * then falls back to geometric heuristic rules if confidence is below threshold.
+ * 
+ * @param {Array} landmarks - 21 hand 3D landmarks for primary hand
+ * @param {Object} handedness - Handedness info
+ * @param {Array} multiHandLandmarks - Full list of all detected hand landmarks (1 or 2 hands)
+ * @param {Array} multiHandedness - Full list of handedness objects
  * @returns {Object} Recognized gesture info { gesture, confidence }
  */
-export function classifyGesture(landmarks) {
-  if (!landmarks || landmarks.length < 21) return { gesture: '', confidence: 0 };
+export function classifyGesture(landmarks, handedness, multiHandLandmarks, multiHandedness) {
+  const handsList = multiHandLandmarks || (landmarks ? [landmarks] : []);
+  const handednessList = multiHandedness || (handedness ? [handedness] : []);
+
+  if (handsList.length === 0) return { gesture: '', confidence: 0 };
+
+  // 1. Try dataset vector classification (Kaggle/Colab data matching)
+  const datasetResult = classifyLandmarksWithDataset(handsList, handednessList);
+  if (datasetResult && datasetResult.gesture && datasetResult.gesture !== 'Signing...') {
+    return datasetResult;
+  }
+
+  // 2. Fallback to Geometric Heuristic Rules
+  const primaryHand = landmarks || handsList[0];
+  if (!primaryHand || primaryHand.length < 21) return { gesture: '', confidence: 0 };
 
   // Helper to calculate distance between two points
   const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
 
   // Tip indices: Thumb=4, Index=8, Middle=12, Ring=16, Pinky=20
   // MCP indices: Index=5, Middle=9, Ring=13, Pinky=17
-  const thumbTip = landmarks[4];
-  const indexTip = landmarks[8];
-  const middleTip = landmarks[12];
-  const ringTip = landmarks[16];
-  const pinkyTip = landmarks[20];
+  const thumbTip = primaryHand[4];
+  const indexTip = primaryHand[8];
+  const middleTip = primaryHand[12];
+  const ringTip = primaryHand[16];
+  const pinkyTip = primaryHand[20];
 
-  const indexMcp = landmarks[5];
-  const middleMcp = landmarks[9];
-  const ringMcp = landmarks[13];
-  const pinkyMcp = landmarks[17];
+  const indexMcp = primaryHand[5];
+  const middleMcp = primaryHand[9];
+  const ringMcp = primaryHand[13];
+  const pinkyMcp = primaryHand[17];
 
   const isIndexExtended = indexTip.y < indexMcp.y;
   const isMiddleExtended = middleTip.y < middleMcp.y;
@@ -88,13 +115,13 @@ export function classifyGesture(landmarks) {
   const isPinkyExtended = pinkyTip.y < pinkyMcp.y;
 
   // Thumbs Up check
-  if (thumbTip.y < landmarks[3].y && !isIndexExtended && !isMiddleExtended && !isRingExtended && !isPinkyExtended) {
-    return { gesture: 'Thumbs Up / Good', confidence: 0.95 };
+  if (thumbTip.y < primaryHand[3].y && !isIndexExtended && !isMiddleExtended && !isRingExtended && !isPinkyExtended) {
+    return { gesture: 'Good / Thumbs Up', confidence: 0.95 };
   }
 
   // Open Palm / Wave check
   if (isIndexExtended && isMiddleExtended && isRingExtended && isPinkyExtended) {
-    return { gesture: 'Hello / Open Palm', confidence: 0.92 };
+    return { gesture: 'Hello', confidence: 0.92 };
   }
 
   // Peace / V-Sign check
@@ -125,3 +152,4 @@ export function classifyGesture(landmarks) {
 
   return { gesture: 'Signing...', confidence: 0.70 };
 }
+

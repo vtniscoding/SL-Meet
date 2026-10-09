@@ -64,7 +64,12 @@ export function useMediaPipe() {
         }
 
         const primaryHand = results.multiHandLandmarks[0];
-        const gestureResult = classifyGesture(primaryHand);
+        const gestureResult = classifyGesture(
+          primaryHand,
+          results.multiHandedness?.[0],
+          results.multiHandLandmarks,
+          results.multiHandedness
+        );
         setActiveGesture(gestureResult);
       } else {
         setDetectedCount(0);

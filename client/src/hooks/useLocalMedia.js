@@ -197,8 +197,9 @@ export function useLocalMedia() {
 
   // Toggle Microphone (Audio track mute/unmute)
   const toggleMic = useCallback(() => {
-    if (localStream) {
-      const audioTracks = localStream.getAudioTracks();
+    if (localStreamRef.current || localStream) {
+      const stream = localStreamRef.current || localStream;
+      const audioTracks = stream.getAudioTracks();
       audioTracks.forEach((track) => {
         track.enabled = !track.enabled;
       });
@@ -206,10 +207,23 @@ export function useLocalMedia() {
     }
   }, [localStream]);
 
+  // Explicitly Mute Microphone (Force mute audio tracks)
+  const muteMic = useCallback(() => {
+    if (localStreamRef.current || localStream) {
+      const stream = localStreamRef.current || localStream;
+      const audioTracks = stream.getAudioTracks();
+      audioTracks.forEach((track) => {
+        track.enabled = false;
+      });
+      setIsMuted(true);
+    }
+  }, [localStream]);
+
   // Toggle Camera (Video track on/off)
   const toggleCamera = useCallback(() => {
-    if (localStream) {
-      const videoTracks = localStream.getVideoTracks();
+    if (localStreamRef.current || localStream) {
+      const stream = localStreamRef.current || localStream;
+      const videoTracks = stream.getVideoTracks();
       videoTracks.forEach((track) => {
         track.enabled = !track.enabled;
       });
@@ -246,7 +260,9 @@ export function useLocalMedia() {
     changeSpeakerDevice,
     refreshDevices,
     toggleMic,
+    muteMic,
     toggleCamera,
     stopMedia,
   };
 }
+

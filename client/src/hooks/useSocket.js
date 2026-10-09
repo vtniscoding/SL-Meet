@@ -11,6 +11,9 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
   const [roomUsers, setRoomUsers] = useState([]);
 
   const [presentingUsers, setPresentingUsers] = useState({});
+  const [chatMessages, setChatMessages] = useState([]);
+  const [hostId, setHostId] = useState(null);
+  const [peerMediaStatus, setPeerMediaStatus] = useState({});
 
   const addLog = useCallback((message, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
@@ -31,6 +34,9 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
       setSocketId(null);
       setRoomUsers([]);
       setPresentingUsers({});
+      setChatMessages([]);
+      setPeerMediaStatus({});
+      setHostId(null);
       addLog(`Disconnected from socket service: ${reason}`, 'warning');
     };
 
@@ -47,35 +53,90 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
     const onRoomUsers = (data) => {
       addLog(`Room members loaded: ${data.participants ? data.participants.length : 0}`, 'info');
       setRoomUsers(data.participants || []);
+      if (data.hostId) {
+        setHostId(data.hostId);
+      }
       
       const presentingMap = {};
+      const mediaMap = {};
       (data.participants || []).forEach(p => {
-        if (p && p.userId && p.isPresenting) {
-          presentingMap[p.userId] = {
-            isPresenting: true,
-            screenStreamId: p.screenStreamId,
+        if (p && p.userId) {
+          if (p.isPresenting) {
+            presentingMap[p.userId] = {
+              isPresenting: true,
+              screenStreamId: p.screenStreamId,
+            };
+          }
+          mediaMap[p.userId] = {
+            isMuted: !!p.isMuted,
+            isCameraOff: !!p.isCameraOff,
           };
         }
       });
       setPresentingUsers(prev => ({ ...prev, ...presentingMap }));
+      setPeerMediaStatus(prev => ({ ...prev, ...mediaMap }));
     };
 
     const onUserJoined = (data) => {
       addLog(`User ${data.userId.slice(0, 5)} joined room ${data.roomId}`, 'info');
+      if (data.hostId) {
+        setHostId(data.hostId);
+      }
+      if (data.userId && data.userMeta) {
+        setPeerMediaStatus(prev => ({
+          ...prev,
+          [data.userId]: {
+            isMuted: !!data.userMeta.isMuted,
+            isCameraOff: !!data.userMeta.isCameraOff,
+          },
+        }));
+      }
+      const userName = data.userMeta?.name || `Participant ${data.userId.slice(0, 4)}`;
       setRoomUsers((prev) => {
         if (prev.some((u) => u.userId === data.userId)) return prev;
         return [...prev, { userId: data.userId, userMeta: data.userMeta }];
       });
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: `sys-join-${data.userId}-${Date.now()}`,
+          senderId: 'system',
+          senderName: 'System',
+          text: `${userName} joined the room`,
+          timestamp: Date.now(),
+          type: 'system',
+        },
+      ]);
     };
 
     const onUserLeft = (data) => {
       addLog(`User ${data.userId.slice(0, 5)} left room`, 'warning');
+      if (data.hostId) {
+        setHostId(data.hostId);
+      }
+      const shortId = data.userId ? data.userId.slice(0, 4) : 'User';
       setRoomUsers((prev) => prev.filter((u) => u.userId !== data.userId));
       setPresentingUsers((prev) => {
         const next = { ...prev };
         delete next[data.userId];
         return next;
       });
+      setPeerMediaStatus((prev) => {
+        const next = { ...prev };
+        delete next[data.userId];
+        return next;
+      });
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: `sys-left-${data.userId}-${Date.now()}`,
+          senderId: 'system',
+          senderName: 'System',
+          text: `Participant ${shortId} left the room`,
+          timestamp: Date.now(),
+          type: 'system',
+        },
+      ]);
     };
 
     const onPeerPresenting = (data) => {
@@ -89,6 +150,30 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
       }));
     };
 
+    const onPeerMediaStatus = (data) => {
+      setPeerMediaStatus((prev) => ({
+        ...prev,
+        [data.senderId]: {
+          isMuted: !!data.isMuted,
+          isCameraOff: !!data.isCameraOff,
+        },
+      }));
+    };
+
+    const onChatMessage = (messageData) => {
+      setChatMessages((prev) => [...prev, messageData]);
+    };
+
+    const onMutePeerRequest = (data) => {
+      addLog(`Mute request received from host (${data.senderId.slice(0, 5)})`, 'warning');
+      window.dispatchEvent(new CustomEvent('sl_meet_mute_local_mic'));
+    };
+
+    const onKickPeerRequest = (data) => {
+      addLog(`Kick request received from host (${data.senderId.slice(0, 5)})`, 'error');
+      window.dispatchEvent(new CustomEvent('sl_meet_kicked_from_room'));
+    };
+
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('connect_error', onConnectError);
@@ -97,6 +182,10 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
     socket.on('user_joined', onUserJoined);
     socket.on('user_left', onUserLeft);
     socket.on('peer_presenting', onPeerPresenting);
+    socket.on('peer_media_status', onPeerMediaStatus);
+    socket.on('chat_message', onChatMessage);
+    socket.on('mute_peer_request', onMutePeerRequest);
+    socket.on('kick_peer_request', onKickPeerRequest);
 
     return () => {
       socket.off('connect', onConnect);
@@ -107,6 +196,10 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
       socket.off('user_joined', onUserJoined);
       socket.off('user_left', onUserLeft);
       socket.off('peer_presenting', onPeerPresenting);
+      socket.off('peer_media_status', onPeerMediaStatus);
+      socket.off('chat_message', onChatMessage);
+      socket.off('mute_peer_request', onMutePeerRequest);
+      socket.off('kick_peer_request', onKickPeerRequest);
     };
   }, [serverUrl, addLog]);
 
@@ -138,6 +231,9 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
       setCurrentRoom('');
       setRoomUsers([]);
       setPresentingUsers({});
+      setPeerMediaStatus({});
+      setChatMessages([]);
+      setHostId(null);
     }
   };
 
@@ -164,20 +260,72 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
     }
   };
 
+  const sendMediaStatusChange = (isMuted, isCameraOff) => {
+    const socket = getSocket(serverUrl);
+    if (socket.connected && currentRoom) {
+      socket.emit('media_status_change', {
+        roomId: currentRoom,
+        isMuted: !!isMuted,
+        isCameraOff: !!isCameraOff,
+      });
+    }
+  };
+
+  const sendChatMessage = (text, senderName = 'You') => {
+    const socket = getSocket(serverUrl);
+    if (socket.connected && currentRoom && text && text.trim().length > 0) {
+      socket.emit('send_chat_message', {
+        roomId: currentRoom,
+        text: text.trim(),
+        senderName,
+      });
+    }
+  };
+
+  const sendMutePeer = (targetId) => {
+    const socket = getSocket(serverUrl);
+    if (socket.connected && currentRoom && targetId) {
+      socket.emit('mute_peer', { roomId: currentRoom, targetId });
+      addLog(`Sent remote mute request to ${targetId.slice(0, 5)}`, 'info');
+    }
+  };
+
+  const sendKickPeer = (targetId) => {
+    const socket = getSocket(serverUrl);
+    if (socket.connected && currentRoom && targetId) {
+      socket.emit('kick_peer', { roomId: currentRoom, targetId });
+      addLog(`Sent kick request to ${targetId.slice(0, 5)}`, 'warning');
+    }
+  };
+
+  const isHost = !!(socketId && hostId && socketId === hostId);
+
   return {
     serverUrl,
     setServerUrl,
     isConnected,
     socketId,
     currentRoom,
+    hostId,
+    isHost,
     logs,
     remoteGestures,
     roomUsers,
     presentingUsers,
+    peerMediaStatus,
+    chatMessages,
     toggleConnection,
     joinRoom,
     leaveRoom,
     sendGesture,
     sendPresentingStatus,
+    sendMediaStatusChange,
+    sendChatMessage,
+    sendMutePeer,
+    sendKickPeer,
   };
 }
+
+
+
+

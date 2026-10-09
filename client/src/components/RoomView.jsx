@@ -3,13 +3,20 @@ import { useLocalMedia } from '../hooks/useLocalMedia';
 import { useSocket } from '../hooks/useSocket';
 import { useWebRTC } from '../hooks/useWebRTC';
 import { useScreenShare } from '../hooks/useScreenShare';
+import { useAslAggregator } from '../hooks/useAslAggregator';
+import { downloadMeetingTranscript } from '../utils/exportTranscript';
 import MeetingLayoutEngine from './room/MeetingLayoutEngine';
 import MeetingControlBar from './room/MeetingControlBar';
+import MeetingChatDrawer from './room/MeetingChatDrawer';
+import MeetingParticipantsDrawer from './room/MeetingParticipantsDrawer';
 
 /**
  * Top-Level Room Layout Container Component
  */
 export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMediaState }) {
+  // Real-Time ASL Sentence Aggregator Hook (Buffers raw gestures into fluent sentences with auto-clearing)
+  const { currentSentence, transcriptLogs, pushGesture } = useAslAggregator(1500, 3, 400);
+
   // Modular Local Media Stream & VAD Hook
   const internalMediaState = useLocalMedia();
   const {
@@ -19,6 +26,7 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
     isCameraOff,
     isSpeaking,
     toggleMic,
+    muteMic,
     toggleCamera,
     stopMedia,
   } = externalMediaState || internalMediaState;
@@ -33,14 +41,21 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
   const {
     isConnected,
     socketId,
+    hostId,
     remoteGestures,
     roomUsers,
     presentingUsers,
+    peerMediaStatus,
+    chatMessages,
     toggleConnection,
     joinRoom,
     leaveRoom,
     sendGesture,
     sendPresentingStatus,
+    sendMediaStatusChange,
+    sendChatMessage,
+    sendMutePeer,
+    sendKickPeer,
   } = useSocket();
 
   // WebRTC Real-Time P2P Video/Audio Streaming Hook
@@ -57,15 +72,45 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
     };
   }, [roomId]);
 
-  // Sync latest remote gesture into subtitle overlay
+  // Broadcast local camera & mic status changes to all room peers
+  useEffect(() => {
+    if (sendMediaStatusChange && isConnected) {
+      sendMediaStatusChange(isMuted, isCameraOff);
+    }
+  }, [isMuted, isCameraOff, isConnected, sendMediaStatusChange]);
+
+  // Listen for host remote moderation events (remote mute request / kicked)
+  useEffect(() => {
+    const handleRemoteMute = () => {
+      if (muteMic) {
+        muteMic();
+      }
+    };
+    const handleRemoteKick = () => {
+      handleLeave();
+    };
+
+    window.addEventListener('sl_meet_mute_local_mic', handleRemoteMute);
+    window.addEventListener('sl_meet_kicked_from_room', handleRemoteKick);
+
+    return () => {
+      window.removeEventListener('sl_meet_mute_local_mic', handleRemoteMute);
+      window.removeEventListener('sl_meet_kicked_from_room', handleRemoteKick);
+    };
+  }, [muteMic]);
+
+  // Sync latest remote gesture into ASL Sentence Aggregator
   useEffect(() => {
     if (remoteGestures && remoteGestures.length > 0) {
       const latest = remoteGestures[0];
       if (latest && latest.gesture) {
-        setSubtitleText(`${latest.gesture}`);
+        const sender = roomUsers.find((u) => u.userId === latest.senderId);
+        const senderName = sender?.userMeta?.name || `Participant ${latest.senderId?.slice(0, 4)}`;
+        pushGesture(senderName, latest.gesture);
       }
     }
-  }, [remoteGestures]);
+  }, [remoteGestures, roomUsers, pushGesture]);
+
 
   const prevLocalPresentingRef = useRef(false);
   const prevRemotePresenterRef = useRef(null);
@@ -100,6 +145,46 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
   const [isAiEnabled, setIsAiEnabled] = useState(false);
   const [isHandTrackingEnabled, setIsHandTrackingEnabled] = useState(false);
   const [subtitleText, setSubtitleText] = useState('AI Subtitle Standby');
+
+  // In-Call Real-Time Chat & People Drawers state (Mutually Exclusive)
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isPeopleOpen, setIsPeopleOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const lastMessageCountRef = useRef(0);
+
+  useEffect(() => {
+    if (chatMessages.length > lastMessageCountRef.current) {
+      const newMessages = chatMessages.slice(lastMessageCountRef.current);
+      const incomingRemoteMsgs = newMessages.filter(
+        (m) => m.senderId !== socketId && m.senderId !== 'local'
+      );
+      if (!isChatOpen && incomingRemoteMsgs.length > 0) {
+        setUnreadCount((prev) => prev + incomingRemoteMsgs.length);
+      }
+    }
+    lastMessageCountRef.current = chatMessages.length;
+  }, [chatMessages, isChatOpen, socketId]);
+
+  const handleToggleChat = () => {
+    setIsChatOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        setUnreadCount(0);
+        setIsPeopleOpen(false);
+      }
+      return next;
+    });
+  };
+
+  const handleTogglePeople = () => {
+    setIsPeopleOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        setIsChatOpen(false);
+      }
+      return next;
+    });
+  };
 
   // Dynamic Participants Roster constructed from local state, socket roomUsers, and WebRTC peerStreams
   const localCameraParticipant = {
@@ -137,14 +222,33 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
       const isPeerPresenting = presentingUsers[u.userId]?.isPresenting === true;
       const baseName = u.userMeta?.name || `Participant ${u.userId.slice(0, 4)}`;
 
+      // Compute peer mic & camera status from real-time peerMediaStatus or stream track inspection
+      const peerMedia = (peerMediaStatus && peerMediaStatus[u.userId]) || u.userMeta || {};
+      const peerAudioTrack = peerStream?.getAudioTracks()[0];
+      const peerVideoTrack = peerStream?.getVideoTracks()[0];
+
+      const isPeerMuted =
+        peerMedia.isMuted !== undefined
+          ? peerMedia.isMuted
+          : peerAudioTrack
+          ? !peerAudioTrack.enabled
+          : false;
+
+      const isPeerCameraOff =
+        peerMedia.isCameraOff !== undefined
+          ? peerMedia.isCameraOff
+          : peerVideoTrack
+          ? !peerVideoTrack.enabled
+          : false;
+
       // 1. Peer Camera Tile
       remoteParticipants.push({
         id: u.userId,
         name: baseName,
         isLocal: false,
         isScreenSharing: false,
-        isCameraOff: false,
-        isMuted: false,
+        isCameraOff: isPeerCameraOff,
+        isMuted: isPeerMuted,
         isSpeaking: false,
         isActiveSpeaker: false,
         hasStream: !!peerStream,
@@ -169,6 +273,7 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
     });
 
   const updatedParticipants = [
+
     ...(localPresentationParticipant ? [localPresentationParticipant] : []),
     localCameraParticipant,
     ...remoteParticipants,
@@ -200,41 +305,69 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
   const handleGestureDetected = useCallback(
     (gesture) => {
       if (gesture) {
-        setSubtitleText(gesture);
+        pushGesture('You', gesture);
         sendGesture({ gesture, confidence: 0.95 });
       }
     },
-    [sendGesture]
+    [sendGesture, pushGesture]
   );
+
+  const handleExportTranscript = useCallback(() => {
+    downloadMeetingTranscript(transcriptLogs, roomId);
+  }, [transcriptLogs, roomId]);
 
   return (
     <div className="w-screen h-screen max-h-screen bg-[#121212] text-white flex flex-col justify-between p-6 font-sans select-none overflow-hidden">
       {/* Top Header Room Info */}
-      <header className="w-full text-sm font-medium text-slate-300 flex items-center justify-between z-10">
-        <div>
-          Room ID: <span className="font-mono font-bold text-white">{roomId}</span>
-        </div>
-        <div className="text-xs text-slate-400 font-mono flex items-center space-x-3">
-          <span>Participants: {updatedParticipants.length}</span>
-          <span className="uppercase bg-slate-800 px-2 py-0.5 rounded text-[10px] text-slate-300">
-            Layout: {layoutMode}
+      <header className="w-full text-xs md:text-sm font-semibold text-slate-400 flex items-center justify-between z-10 shrink-0 select-none">
+        <div className="flex items-center space-x-2">
+          <span>Room ID:</span>
+          <span className="font-mono font-bold text-white bg-slate-800/80 px-2.5 py-1 rounded-md border border-slate-700/60 shadow-sm tracking-wide">
+            {roomId}
           </span>
         </div>
       </header>
 
-      {/* Google Meet Layout Engine (tiled, sidebar, spotlight) */}
-      <MeetingLayoutEngine
-        participants={updatedParticipants}
-        videoRef={videoRef}
-        localStream={activeLocalStream}
-        layoutMode={layoutMode}
-        pinnedId={pinnedId}
-        onTogglePin={handleTogglePin}
-        isAiEnabled={isAiEnabled}
-        isHandTrackingEnabled={isHandTrackingEnabled}
-        subtitleText={subtitleText}
-        onGestureDetected={handleGestureDetected}
-      />
+      {/* Main Workspace: Meeting Layout Engine + Slide-over Chat & People Drawers */}
+      <main className="flex-1 w-full flex items-center justify-between gap-4 overflow-hidden my-3 relative min-h-0">
+        <div className="flex-1 h-full min-w-0">
+          <MeetingLayoutEngine
+            participants={updatedParticipants}
+            videoRef={videoRef}
+            localStream={activeLocalStream}
+            layoutMode={layoutMode}
+            pinnedId={pinnedId}
+            onTogglePin={handleTogglePin}
+            isAiEnabled={isAiEnabled}
+            isHandTrackingEnabled={isHandTrackingEnabled}
+            subtitleText={currentSentence}
+            onGestureDetected={handleGestureDetected}
+          />
+        </div>
+
+        {/* Real-Time In-Call Text Chat Drawer */}
+        <MeetingChatDrawer
+          isOpen={isChatOpen}
+          onClose={() => setIsChatOpen(false)}
+          messages={chatMessages}
+          onSendMessage={sendChatMessage}
+          currentSocketId={socketId}
+        />
+
+        {/* Real-Time Participants & Moderation Drawer */}
+        <MeetingParticipantsDrawer
+          isOpen={isPeopleOpen}
+          onClose={() => setIsPeopleOpen(false)}
+          participants={updatedParticipants}
+          pinnedId={pinnedId}
+          hostId={hostId}
+          onTogglePin={handleTogglePin}
+          onMutePeer={sendMutePeer}
+          onKickPeer={sendKickPeer}
+          currentSocketId={socketId}
+        />
+
+      </main>
 
       {/* Bottom Meeting Controls Bar */}
       <MeetingControlBar
@@ -243,6 +376,10 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
         isScreenSharing={isScreenSharing}
         isAiEnabled={isAiEnabled}
         isHandTrackingEnabled={isHandTrackingEnabled}
+        isChatOpen={isChatOpen}
+        isPeopleOpen={isPeopleOpen}
+        unreadCount={unreadCount}
+        participantCount={updatedParticipants.length}
         layoutMode={layoutMode}
         pinnedId={pinnedId}
         onToggleMic={toggleMic}
@@ -250,11 +387,16 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
         onToggleScreenShare={toggleScreenShare}
         onToggleAi={handleToggleAi}
         onToggleHandTracking={handleToggleHandTracking}
+        onToggleChat={handleToggleChat}
+        onTogglePeople={handleTogglePeople}
         onChangeLayout={(mode) => setLayoutMode(mode)}
+        onExportTranscript={handleExportTranscript}
         onResetPin={handleResetPin}
         onLeaveRoom={handleLeave}
       />
     </div>
   );
 }
+
+
 
