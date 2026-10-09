@@ -1,5 +1,10 @@
-import { Hands, HAND_CONNECTIONS } from '@mediapipe/hands';
-import { drawConnectors, drawLandmarks } from '@mediapipe/drawing_utils';
+import * as mpHands from '@mediapipe/hands';
+import * as mpDrawing from '@mediapipe/drawing_utils';
+
+const Hands = mpHands.Hands || window.Hands || mpHands.default?.Hands;
+const HAND_CONNECTIONS = mpHands.HAND_CONNECTIONS || window.HAND_CONNECTIONS || mpHands.default?.HAND_CONNECTIONS;
+const drawConnectors = mpDrawing.drawConnectors || window.drawConnectors || mpDrawing.default?.drawConnectors;
+const drawLandmarks = mpDrawing.drawLandmarks || window.drawLandmarks || mpDrawing.default?.drawLandmarks;
 import {
   classifyLandmarksWithDataset,
   loadCustomDataset,
