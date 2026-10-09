@@ -22,6 +22,7 @@ export function useAslAggregator(
   const [transcriptLogs, setTranscriptLogs] = useState([]);
 
   const bufferRef = useRef([]);
+  const windowRef = useRef([]);
   const pendingRef = useRef({ token: null, count: 0 });
   const lastAddedTimeRef = useRef(0);
   const lastSenderRef = useRef('You');
@@ -32,7 +33,7 @@ export function useAslAggregator(
       if (!rawGesture) return;
 
       // Filter out low confidence detections
-      if (typeof confidence === 'number' && confidence < 0.85) {
+      if (typeof confidence === 'number' && confidence < 0.70) {
         return;
       }
 
@@ -42,25 +43,43 @@ export function useAslAggregator(
       lastSenderRef.current = senderName;
       const now = Date.now();
 
-      // Multi-Frame Stability Check (Debounce)
-      if (pendingRef.current.token === cleanToken) {
-        pendingRef.current.count += 1;
-      } else {
-        pendingRef.current = { token: cleanToken, count: 1 };
+      // Multi-Frame Majority Vote Sliding Window (Anti-Jitter)
+      if (!windowRef.current) windowRef.current = [];
+      windowRef.current.push(cleanToken);
+      const WINDOW_SIZE = 20; // Analyze last ~600ms
+      const MAJORITY_THRESHOLD = 0.65; // Require 65% stability
+      
+      if (windowRef.current.length > WINDOW_SIZE) {
+        windowRef.current.shift();
       }
 
-      // Verify token reached required stability frame threshold
-      if (pendingRef.current.count >= stabilityFramesNeeded) {
-        const isCooldownElapsed = now - lastAddedTimeRef.current >= wordCooldownMs;
-        const currentBuffer = bufferRef.current;
-        const lastToken = currentBuffer[currentBuffer.length - 1];
-
-        if (isCooldownElapsed && lastToken !== cleanToken) {
-          currentBuffer.push(cleanToken);
-          lastAddedTimeRef.current = now;
-          const formattedSentence = formatAslSentence(currentBuffer);
-          setCurrentSentence(formattedSentence);
+      // Count occurrences in the window
+      const counts = {};
+      let maxCount = 0;
+      let majorityToken = null;
+      for (const token of windowRef.current) {
+        counts[token] = (counts[token] || 0) + 1;
+        if (counts[token] > maxCount) {
+          maxCount = counts[token];
+          majorityToken = token;
         }
+      }
+
+      // If no strong majority is found, do nothing yet
+      if (maxCount / windowRef.current.length < MAJORITY_THRESHOLD || windowRef.current.length < 5) {
+        return; 
+      }
+
+      // Majority token is found, apply cooldown and duplicate checks
+      const isCooldownElapsed = now - lastAddedTimeRef.current >= wordCooldownMs;
+      const currentBuffer = bufferRef.current;
+      const lastToken = currentBuffer[currentBuffer.length - 1];
+
+      if (isCooldownElapsed && lastToken !== majorityToken) {
+        currentBuffer.push(majorityToken);
+        lastAddedTimeRef.current = now;
+        const formattedSentence = formatAslSentence(currentBuffer);
+        setCurrentSentence(formattedSentence);
       }
 
       // Reset Silence Timeout for flushing sentence and clearing off-screen
@@ -93,6 +112,7 @@ export function useAslAggregator(
 
           // Clear buffer & reset current sentence so subtitle box clears off-screen gracefully
           bufferRef.current = [];
+          windowRef.current = [];
           pendingRef.current = { token: null, count: 0 };
           setCurrentSentence('');
         }
@@ -104,6 +124,7 @@ export function useAslAggregator(
   const clearTranscript = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
     bufferRef.current = [];
+    windowRef.current = [];
     pendingRef.current = { token: null, count: 0 };
     setCurrentSentence('');
     setTranscriptLogs([]);

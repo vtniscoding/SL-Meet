@@ -83,71 +83,12 @@ export function classifyGesture(landmarks, handedness, multiHandLandmarks, multi
 
   if (handsList.length === 0) return { gesture: '', confidence: 0 };
 
-  // 1. Try dataset vector classification (Kaggle/Colab data matching)
+  // Strictly use Dataset Vector Classification (Admin Studio Data)
   const datasetResult = classifyLandmarksWithDataset(handsList, handednessList);
-  if (datasetResult && datasetResult.gesture && datasetResult.gesture !== 'Signing...') {
+  
+  // Return the result directly from the dataset classifier (returns 'Signing...' by default)
+  if (datasetResult) {
     return datasetResult;
-  }
-
-  // 2. Fallback to Geometric Heuristic Rules
-  const primaryHand = landmarks || handsList[0];
-  if (!primaryHand || primaryHand.length < 21) return { gesture: '', confidence: 0 };
-
-  // Helper to calculate distance between two points
-  const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
-
-  // Tip indices: Thumb=4, Index=8, Middle=12, Ring=16, Pinky=20
-  // MCP indices: Index=5, Middle=9, Ring=13, Pinky=17
-  const thumbTip = primaryHand[4];
-  const indexTip = primaryHand[8];
-  const middleTip = primaryHand[12];
-  const ringTip = primaryHand[16];
-  const pinkyTip = primaryHand[20];
-
-  const indexMcp = primaryHand[5];
-  const middleMcp = primaryHand[9];
-  const ringMcp = primaryHand[13];
-  const pinkyMcp = primaryHand[17];
-
-  const isIndexExtended = indexTip.y < indexMcp.y;
-  const isMiddleExtended = middleTip.y < middleMcp.y;
-  const isRingExtended = ringTip.y < ringMcp.y;
-  const isPinkyExtended = pinkyTip.y < pinkyMcp.y;
-
-  // Thumbs Up check
-  if (thumbTip.y < primaryHand[3].y && !isIndexExtended && !isMiddleExtended && !isRingExtended && !isPinkyExtended) {
-    return { gesture: 'Good / Thumbs Up', confidence: 0.95 };
-  }
-
-  // Open Palm / Wave check
-  if (isIndexExtended && isMiddleExtended && isRingExtended && isPinkyExtended) {
-    return { gesture: 'Hello', confidence: 0.92 };
-  }
-
-  // Peace / V-Sign check
-  if (isIndexExtended && isMiddleExtended && !isRingExtended && !isPinkyExtended) {
-    return { gesture: 'Victory / Peace', confidence: 0.94 };
-  }
-
-  // OK Sign check
-  const thumbIndexDist = dist(thumbTip, indexTip);
-  if (thumbIndexDist < 0.05 && isMiddleExtended && isRingExtended && isPinkyExtended) {
-    return { gesture: 'Agreed / OK', confidence: 0.91 };
-  }
-
-  // Pointing Up check
-  if (isIndexExtended && !isMiddleExtended && !isRingExtended && !isPinkyExtended) {
-    return { gesture: 'Attention / Pointing', confidence: 0.89 };
-  }
-
-  // Love / Rock-On check
-  if (isIndexExtended && !isMiddleExtended && !isRingExtended && isPinkyExtended) {
-    return { gesture: 'I Love You', confidence: 0.93 };
-  }
-
-  // Closed Fist check
-  if (!isIndexExtended && !isMiddleExtended && !isRingExtended && !isPinkyExtended) {
-    return { gesture: 'Wait / Fist', confidence: 0.88 };
   }
 
   return { gesture: 'Signing...', confidence: 0.70 };

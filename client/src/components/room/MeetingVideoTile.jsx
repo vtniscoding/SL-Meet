@@ -82,14 +82,14 @@ export default function MeetingVideoTile({
         }
 
         if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-          const { gesture } = classifyGesture(
+          const { gesture, confidence } = classifyGesture(
             results.multiHandLandmarks[0],
             results.multiHandedness?.[0],
             results.multiHandLandmarks,
             results.multiHandedness
           );
-          if (gesture && onGestureDetectedRef.current) {
-            onGestureDetectedRef.current(gesture);
+          if (gesture && gesture !== 'Signing...' && onGestureDetectedRef.current) {
+            onGestureDetectedRef.current({ gesture, confidence });
           }
         }
       });

@@ -3,15 +3,73 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const DATASET_PATH = path.join(__dirname, 'data', 'asl_dataset.json');
+const ADMIN_SECRET = process.env.ADMIN_SECRET || 'sl_meet_admin_secret_2026';
 
 const PORT = process.env.PORT || 4000;
 const CLIENT_URL = process.env.CLIENT_URL || '*';
 
 const app = express();
 app.use(cors({ origin: '*' }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+
+// Helper to read server dataset safely
+function readDataset() {
+  try {
+    if (fs.existsSync(DATASET_PATH)) {
+      const raw = fs.readFileSync(DATASET_PATH, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.gestures)) {
+        parsed.gestures.forEach((g, idx) => {
+          if (!g.id) {
+            g.id = `sample_${idx + 1}`;
+          }
+        });
+      }
+      return parsed;
+    }
+  } catch (err) {
+    console.error('[Server Dataset] Failed to read dataset:', err);
+  }
+  return { gestures: [] };
+}
+
+// Helper to write server dataset safely
+function writeDataset(data) {
+  try {
+    const dir = path.dirname(DATASET_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(DATASET_PATH, JSON.stringify(data, null, 2), 'utf8');
+
+    // Also sync to client src dataset if running in local environment
+    const clientDatasetPath = path.join(__dirname, '..', 'client', 'src', 'data', 'asl_dataset.json');
+    if (fs.existsSync(path.dirname(clientDatasetPath))) {
+      fs.writeFileSync(clientDatasetPath, JSON.stringify(data, null, 2), 'utf8');
+    }
+
+    return true;
+  } catch (err) {
+    console.error('[Server Dataset] Failed to write dataset:', err);
+    return false;
+  }
+}
+
+// Admin Protection Middleware
+function requireAdminAuth(req, res, next) {
+  const adminKey = req.headers['x-admin-key'] || req.query.adminKey || req.body.adminKey;
+  if (adminKey === ADMIN_SECRET) {
+    return next();
+  }
+  return res.status(403).json({ success: false, message: 'Unauthorized Admin Access.' });
+}
 
 // Render Health Check Endpoint
 app.get('/', (req, res) => {
@@ -25,6 +83,124 @@ app.get('/', (req, res) => {
 
 app.get('/health', (req, res) => {
   res.status(200).send('OK');
+});
+
+// PUBLIC API: Client fetches active ASL Dataset
+app.get('/api/gestures/dataset', (req, res) => {
+  const dataset = readDataset();
+  res.json({ success: true, dataset });
+});
+
+// ADMIN API: Verify Admin Secret Key
+app.post('/api/admin/verify', requireAdminAuth, (req, res) => {
+  res.json({ success: true, message: 'Admin authenticated successfully.' });
+});
+
+// ADMIN API: Import / Replace entire dataset JSON from Kaggle/Colab
+app.post('/api/gestures/dataset', requireAdminAuth, (req, res) => {
+  const { dataset } = req.body;
+  if (dataset && Array.isArray(dataset.gestures)) {
+    dataset.gestures.forEach((g, idx) => {
+      if (!g.id) g.id = `sample_${idx + 1}`;
+    });
+    writeDataset(dataset);
+    if (io) io.emit('dataset_updated', { count: dataset.gestures.length });
+    return res.json({ success: true, count: dataset.gestures.length });
+  }
+  res.status(400).json({ success: false, message: 'Invalid dataset format.' });
+});
+
+// ADMIN API: Force Deploy Dataset (Broadcasts to all clients to refetch dataset)
+app.post('/api/admin/deploy', requireAdminAuth, (req, res) => {
+  const dataset = readDataset();
+  const count = dataset?.gestures?.length || 0;
+  if (io) io.emit('dataset_updated', { count });
+  res.json({ success: true, message: 'Dataset deployed to all connected clients.', count });
+});
+
+// ADMIN API: Save / Append new sample variation recorded via camera
+app.post('/api/gestures/sample', requireAdminAuth, (req, res) => {
+  const { name, vector, type, description, id } = req.body;
+  if (!name || !vector || !Array.isArray(vector)) {
+    return res.status(400).json({ success: false, message: 'Missing gesture name or feature vector.' });
+  }
+
+  const dataset = readDataset();
+  if (!dataset.gestures) dataset.gestures = [];
+
+  const sampleId = id || `sample_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const existingIdx = dataset.gestures.findIndex((g) => g.id === sampleId);
+
+  const newSample = {
+    id: sampleId,
+    name: name.trim(),
+    type: type || (vector.length === 126 ? 'two_hands' : 'single_hand'),
+    description: description || `Sample variation for ${name.trim()}`,
+    vector,
+    createdAt: new Date().toISOString(),
+  };
+
+  if (existingIdx >= 0) {
+    dataset.gestures[existingIdx] = newSample;
+  } else {
+    dataset.gestures.push(newSample);
+  }
+
+  writeDataset(dataset);
+  if (io) io.emit('dataset_updated', { count: dataset.gestures.length, updatedGesture: name.trim() });
+  res.json({ success: true, count: dataset.gestures.length, gesture: newSample });
+});
+
+// ADMIN API: Edit sample details (name label, description)
+app.put('/api/gestures/sample/:id', requireAdminAuth, (req, res) => {
+  const { id } = req.params;
+  const { name, description } = req.body;
+  const dataset = readDataset();
+
+  if (!dataset.gestures) return res.status(404).json({ success: false, message: 'Dataset empty.' });
+
+  const idx = dataset.gestures.findIndex((g) => g.id === id);
+  if (idx < 0) return res.status(404).json({ success: false, message: 'Sample variation not found.' });
+
+  if (name) dataset.gestures[idx].name = name.trim();
+  if (description) dataset.gestures[idx].description = description.trim();
+
+  writeDataset(dataset);
+  if (io) io.emit('dataset_updated', { count: dataset.gestures.length });
+  res.json({ success: true, gesture: dataset.gestures[idx] });
+});
+
+// ADMIN API: Delete single sample variation by ID
+app.delete('/api/gestures/sample/:id', requireAdminAuth, (req, res) => {
+  const { id } = req.params;
+  const dataset = readDataset();
+  if (dataset.gestures) {
+    const initialCount = dataset.gestures.length;
+    dataset.gestures = dataset.gestures.filter((g) => g.id !== id && g.name.toLowerCase() !== id.toLowerCase());
+    if (dataset.gestures.length < initialCount) {
+      writeDataset(dataset);
+      if (io) io.emit('dataset_updated', { count: dataset.gestures.length });
+      return res.json({ success: true, count: dataset.gestures.length });
+    }
+  }
+  res.status(404).json({ success: false, message: 'Sample variation not found.' });
+});
+
+// ADMIN API: Delete all sample variations for a specific gesture label name
+app.delete('/api/gestures/label/:name', requireAdminAuth, (req, res) => {
+  const { name } = req.params;
+  const dataset = readDataset();
+  if (dataset.gestures) {
+    const initialCount = dataset.gestures.length;
+    const labelLower = decodeURIComponent(name).toLowerCase();
+    dataset.gestures = dataset.gestures.filter((g) => g.name.toLowerCase() !== labelLower);
+    if (dataset.gestures.length < initialCount) {
+      writeDataset(dataset);
+      if (io) io.emit('dataset_updated', { count: dataset.gestures.length });
+      return res.json({ success: true, count: dataset.gestures.length });
+    }
+  }
+  res.status(404).json({ success: false, message: 'No samples found for this label.' });
 });
 
 const httpServer = createServer(app);

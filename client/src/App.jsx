@@ -1,14 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import RoomView from './components/RoomView';
 import WaitingLobby from './components/room/WaitingLobby';
+import AdminGestureStudio from './components/admin/AdminGestureStudio';
 import { useLocalMedia } from './hooks/useLocalMedia';
 import { useSocket } from './hooks/useSocket';
+import { fetchDatasetFromServer } from './services/gestureClassifier';
 
 export default function App() {
   const [currentView, setCurrentView] = useState('home'); // 'home' | 'lobby' | 'room'
   const [activeRoomId, setActiveRoomId] = useState('');
   const [showCodeInput, setShowCodeInput] = useState(false);
   const [roomCode, setRoomCode] = useState('');
+  const [isAdminRoute, setIsAdminRoute] = useState(window.location.hash === '#admin');
+
+  // Auto-fetch active ASL dataset from backend Server API on app mount
+  useEffect(() => {
+    fetchDatasetFromServer();
+
+    const handleHashChange = () => {
+      setIsAdminRoute(window.location.hash === '#admin');
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   // Hardware Media Stream & Device State (Shared between Lobby & Room)
   const mediaState = useLocalMedia();
@@ -68,6 +83,18 @@ export default function App() {
     setCurrentView('home');
     setActiveRoomId('');
   };
+
+  // Render Isolated Admin Gesture Studio Portal (Accessed exclusively via /#admin)
+  if (isAdminRoute) {
+    return (
+      <AdminGestureStudio
+        onBackToApp={() => {
+          window.location.hash = '';
+          setIsAdminRoute(false);
+        }}
+      />
+    );
+  }
 
   // Render Waiting Lobby View
   if (currentView === 'lobby') {

@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm --prefix client run electron:dev\"",
+    "admin": "concurrently \"npm run dev:server\" \"npm --prefix client run dev\"",
     "client": "npm --prefix client run electron:dev",
     "dev:client": "npm --prefix client run dev",
     "dev:electron": "npm --prefix client run electron:dev",

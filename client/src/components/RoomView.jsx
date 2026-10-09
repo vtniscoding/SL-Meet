@@ -15,7 +15,7 @@ import MeetingParticipantsDrawer from './room/MeetingParticipantsDrawer';
  */
 export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMediaState }) {
   // Real-Time ASL Sentence Aggregator Hook (Buffers raw gestures into fluent sentences with auto-clearing)
-  const { currentSentence, transcriptLogs, pushGesture } = useAslAggregator(1500, 3, 400);
+  const { currentSentence, transcriptLogs, pushGesture } = useAslAggregator(1500, 8, 700);
 
   // Modular Local Media Stream & VAD Hook
   const internalMediaState = useLocalMedia();
@@ -303,10 +303,10 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
   };
 
   const handleGestureDetected = useCallback(
-    (gesture) => {
-      if (gesture) {
-        pushGesture('You', gesture);
-        sendGesture({ gesture, confidence: 0.95 });
+    (data) => {
+      if (data && data.gesture) {
+        pushGesture('You', data.gesture, data.confidence);
+        sendGesture({ gesture: data.gesture, confidence: data.confidence || 0.95 });
       }
     },
     [sendGesture, pushGesture]

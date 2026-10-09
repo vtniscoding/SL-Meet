@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getSocket, connectSocket, disconnectSocket, SOCKET_URL } from '../services/socket';
+import { fetchDatasetFromServer } from '../services/gestureClassifier';
 
 export function useSocket(initialServerUrl = SOCKET_URL) {
   const [serverUrl, setServerUrl] = useState(initialServerUrl);
@@ -174,6 +175,11 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
       window.dispatchEvent(new CustomEvent('sl_meet_kicked_from_room'));
     };
 
+    const onDatasetUpdated = (data) => {
+      addLog(`Dataset updated on server (${data.count} gestures). Syncing live model...`, 'info');
+      fetchDatasetFromServer(serverUrl);
+    };
+
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('connect_error', onConnectError);
@@ -186,6 +192,7 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
     socket.on('chat_message', onChatMessage);
     socket.on('mute_peer_request', onMutePeerRequest);
     socket.on('kick_peer_request', onKickPeerRequest);
+    socket.on('dataset_updated', onDatasetUpdated);
 
     return () => {
       socket.off('connect', onConnect);
@@ -200,6 +207,7 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
       socket.off('chat_message', onChatMessage);
       socket.off('mute_peer_request', onMutePeerRequest);
       socket.off('kick_peer_request', onKickPeerRequest);
+      socket.off('dataset_updated', onDatasetUpdated);
     };
   }, [serverUrl, addLog]);
 
