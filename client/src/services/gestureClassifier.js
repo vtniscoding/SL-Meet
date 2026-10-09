@@ -1,4 +1,5 @@
 import defaultDataset from '../data/asl_dataset.json';
+import { SOCKET_URL } from './socket';
 
 // Active dataset stored in memory (Initialized with pre-loaded Kaggle/Colab ASL dataset)
 let activeDataset = defaultDataset.gestures || [];
@@ -112,7 +113,7 @@ export function loadCustomDataset(jsonDataset) {
  */
 export async function fetchDatasetFromServer(serverUrl) {
   try {
-    const baseUrl = serverUrl || import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
+    const baseUrl = serverUrl || import.meta.env.VITE_SOCKET_URL || SOCKET_URL || 'http://localhost:4000';
     const timestamp = Date.now();
     const response = await fetch(`${baseUrl}/api/gestures/dataset?t=${timestamp}`);
     if (response.ok) {
