@@ -10,6 +10,7 @@ import { useSocket } from './hooks/useSocket';
 import { useAuth } from './context/AuthContext';
 import { supabase } from './utils/supabase';
 import { fetchDatasetFromServer, initRealtimeDatasetSync } from './services/gestureClassifier';
+import { brandLogo, homeIllustration } from './assets';
 
 export default function App() {
   const [currentView, setCurrentView] = useState('home'); // 'home' | 'dashboard' | 'lobby' | 'room'
@@ -263,8 +264,8 @@ export default function App() {
           {/* Logo placed directly above title with tight spacing */}
           <div className="mb-2">
             <img
-              src="/assets/brand-logo.png"
-              alt="SL-Meet Logo"
+              src={brandLogo}
+              alt="SLMeet Logo"
               className="h-16 md:h-20 lg:h-[84px] xl:h-[96px] w-auto object-contain"
             />
           </div>
@@ -326,7 +327,7 @@ export default function App() {
             className="cursor-pointer transform-gpu will-change-transform flex items-center justify-center p-2"
           >
             <img
-              src="/assets/home-illustration.png"
+              src={homeIllustration}
               alt="AI Sign Language Video Calls"
               className="w-full max-w-xl md:max-w-2xl lg:max-w-3xl xl:max-w-5xl h-auto object-contain filter drop-shadow-xl"
             />

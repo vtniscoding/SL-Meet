@@ -24,7 +24,7 @@ export default function Navbar({
         <div>
           <div className="flex items-center space-x-2">
             <h1 className="font-bold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-slate-200 to-indigo-300">
-              SL-Meet AI
+              SLMeet AI
             </h1>
             <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
               Electron + Vision

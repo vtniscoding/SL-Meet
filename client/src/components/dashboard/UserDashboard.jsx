@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Video, Keyboard, LogOut, User, AlertCircle, Loader2, Sparkles, Shield, Clock } from 'lucide-react';
 import { supabase } from '../../utils/supabase';
+import { brandLogo, homeIllustration } from '../../assets';
 
 export default function UserDashboard({
   user,
@@ -100,8 +101,8 @@ export default function UserDashboard({
         {/* Left: Brand Logo */}
         <div className="flex items-center space-x-3">
           <img
-            src="/assets/brand-logo.png"
-            alt="SL-Meet Logo"
+            src={brandLogo}
+            alt="SLMeet Logo"
             className="h-10 md:h-12 w-auto object-contain"
           />
         </div>
@@ -138,7 +139,7 @@ export default function UserDashboard({
                     <p className="text-sm font-bold text-slate-900 truncate">{displayName}</p>
                     <p className="text-xs text-slate-500 truncate">{user?.email}</p>
                     <span className="inline-block mt-1 text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-blue-50 text-[#5CA0F2] border border-blue-100">
-                      SL-Meet Account
+                      SLMeet Account
                     </span>
                   </div>
                 </div>
@@ -255,8 +256,8 @@ export default function UserDashboard({
           <div className="lg:col-span-5 flex justify-center lg:justify-end">
             <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-sm text-center max-w-sm w-full">
               <img
-                src="/assets/home-illustration.png"
-                alt="SL-Meet Call"
+                src={homeIllustration}
+                alt="SLMeet Call"
                 className="w-44 md:w-52 h-auto mx-auto mb-4 object-contain"
               />
               <h3 className="text-base font-bold text-slate-900">Accessible Communication</h3>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Mail, Lock, User, AlertCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { brandLogo } from '../../assets';
 
 export default function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
   const [mode, setMode] = useState(initialMode); // 'login' | 'register'
@@ -79,8 +80,8 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
         {/* Brand Header */}
         <div className="text-center mb-6">
           <img
-            src="/assets/brand-logo.png"
-            alt="SL-Meet"
+            src={brandLogo}
+            alt="SLMeet"
             className="h-10 mx-auto mb-3 object-contain"
           />
           <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
@@ -89,7 +90,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
           <p className="text-xs text-slate-500 mt-1">
             {mode === 'login'
               ? 'Sign in to create and host video meetings'
-              : 'Join SL-Meet to connect and host accessible meetings'}
+              : 'Join SLMeet to connect and host accessible meetings'}
           </p>
         </div>
 

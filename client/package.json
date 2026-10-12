@@ -1,8 +1,8 @@
 {
   "name": "sl-meet-client",
   "version": "1.0.0",
-  "description": "SL-Meet: Real-time Sign Language & AI-powered Meeting App",
-  "author": "SL-Meet Team",
+  "description": "SLMeet: Real-time Sign Language & AI-powered Meeting App",
+  "author": "SLMeet Team",
   "main": "electron/main.js",
   "type": "module",
   "scripts": {
@@ -15,9 +15,9 @@
   },
   "build": {
     "appId": "com.slmeet.app",
-    "productName": "SL-Meet",
+    "productName": "SLMeet",
     "electronVersion": "29.4.6",
-    "copyright": "Copyright © 2026 SL-Meet",
+    "copyright": "Copyright © 2026 SLMeet",
     "directories": {
       "output": "../release"
     },
@@ -43,8 +43,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "SL-Meet",
-      "uninstallDisplayName": "SL-Meet",
+      "shortcutName": "SLMeet",
+      "uninstallDisplayName": "SLMeet",
       "runAfterFinish": true
     }
   },

@@ -67,7 +67,7 @@ app.whenReady().then(() => {
       .then((sources) => {
         // Prefer physical monitor screens (screen:x:x) over application windows
         const screenSource = sources.find((s) => s.id.startsWith('screen:'));
-        const targetSource = screenSource || sources.find((s) => !s.name.includes('SL-Meet')) || sources[0];
+        const targetSource = screenSource || sources.find((s) => !s.name.includes('SLMeet') && !s.name.includes('SL-Meet')) || sources[0];
         if (targetSource) {
           callback({ video: targetSource });
         } else {
