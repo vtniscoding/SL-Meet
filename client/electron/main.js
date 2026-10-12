@@ -2,6 +2,8 @@ import { app, BrowserWindow, ipcMain, session, desktopCapturer } from 'electron'
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+import fs from 'fs';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -10,7 +12,13 @@ const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 let mainWindow = null;
 
 function createWindow() {
-  const iconPath = path.join(__dirname, '../public/assets/app-icon.png');
+  const primaryIcon = app.isPackaged
+    ? path.join(__dirname, '../dist/assets/icon.ico')
+    : path.join(__dirname, '../public/assets/icon.ico');
+  const fallbackIcon = app.isPackaged
+    ? path.join(__dirname, '../dist/assets/app-icon.png')
+    : path.join(__dirname, '../public/assets/app-icon.png');
+  const iconPath = fs.existsSync(primaryIcon) ? primaryIcon : fallbackIcon;
 
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -18,8 +26,9 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 680,
     icon: iconPath,
-    titleBarStyle: 'hiddenInset',
-    backgroundColor: '#FFFFFF',
+    autoHideMenuBar: true,
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    backgroundColor: '#121212',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -41,6 +50,16 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // Automatic media permission grants for WebRTC camera and microphone
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    const allowed = ['media', 'mediaKeySystem', 'display-capture', 'notifications'];
+    callback(allowed.includes(permission));
+  });
+  session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
+    const allowed = ['media', 'mediaKeySystem', 'display-capture', 'notifications'];
+    return allowed.includes(permission);
+  });
+
   // Handle WebRTC getDisplayMedia screen capture requests in Electron
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
     desktopCapturer

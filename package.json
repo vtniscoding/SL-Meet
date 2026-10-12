@@ -16,7 +16,9 @@
     "dev:server": "npm --prefix server run dev",
     "build:client": "npm --prefix client run build",
     "build:server": "npm --prefix server run build",
-    "start:server": "npm --prefix server start"
+    "start:server": "npm --prefix server start",
+    "dist": "npm --prefix client run electron:build",
+    "pack": "npm --prefix client run electron:pack"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
