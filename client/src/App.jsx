@@ -1,17 +1,29 @@
 import React, { useState, useEffect } from 'react';
+import { AlertCircle, Loader2 } from 'lucide-react';
 import RoomView from './components/RoomView';
 import WaitingLobby from './components/room/WaitingLobby';
 import AdminGestureStudio from './components/admin/AdminGestureStudio';
+import UserDashboard from './components/dashboard/UserDashboard';
+import AuthModal from './components/auth/AuthModal';
 import { useLocalMedia } from './hooks/useLocalMedia';
 import { useSocket } from './hooks/useSocket';
+import { useAuth } from './context/AuthContext';
+import { supabase } from './utils/supabase';
 import { fetchDatasetFromServer } from './services/gestureClassifier';
 
 export default function App() {
-  const [currentView, setCurrentView] = useState('home'); // 'home' | 'lobby' | 'room'
+  const [currentView, setCurrentView] = useState('home'); // 'home' | 'dashboard' | 'lobby' | 'room'
   const [activeRoomId, setActiveRoomId] = useState('');
   const [showCodeInput, setShowCodeInput] = useState(false);
   const [roomCode, setRoomCode] = useState('');
+  const [codeError, setCodeError] = useState('');
+  const [isCheckingCode, setIsCheckingCode] = useState(false);
+  const [userDisplayName, setUserDisplayName] = useState('');
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState('login');
   const [isAdminRoute, setIsAdminRoute] = useState(window.location.hash === '#admin');
+
+  const { user, profile, signOut } = useAuth();
 
   // Auto-fetch active ASL dataset from backend Server API on app mount
   useEffect(() => {
@@ -25,11 +37,27 @@ export default function App() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
+  // When user is authenticated, redirect to User Dashboard if currently on Home
+  useEffect(() => {
+    if (user && currentView === 'home') {
+      setCurrentView('dashboard');
+    }
+  }, [user, currentView]);
+
+  // Sync display name from profile if user is logged in
+  useEffect(() => {
+    if (user && profile?.display_name) {
+      setUserDisplayName(profile.display_name);
+    } else if (user?.email) {
+      setUserDisplayName(user.email.split('@')[0]);
+    }
+  }, [user, profile]);
+
   // Hardware Media Stream & Device State (Shared between Lobby & Room)
   const mediaState = useLocalMedia();
 
   // Socket connection hook
-  const { isConnected, joinRoom, leaveRoom, toggleConnection } = useSocket();
+  const { isConnected, leaveRoom, toggleConnection } = useSocket();
 
   // 3D Tilt Hover State for Hero Illustration
   const [tiltStyle, setTiltStyle] = useState({
@@ -60,18 +88,98 @@ export default function App() {
     });
   };
 
-  const handleJoinSubmit = (e) => {
+  // Create New Meeting (Only authenticated users can create rooms)
+  const handleCreateNewMeeting = async () => {
+    if (!user) {
+      setAuthModalMode('login');
+      setAuthModalOpen(true);
+      return;
+    }
+
+    const part1 = Math.random().toString(36).substring(2, 5);
+    const part2 = Math.random().toString(36).substring(2, 6);
+    const newRoomId = `slm-${part1}-${part2}`;
+
+    try {
+      await supabase.from('rooms').insert({
+        id: newRoomId,
+        host_id: user.id,
+        status: 'active',
+      });
+    } catch (err) {
+      console.warn('Could not record room in Supabase:', err);
+    }
+
+    const defaultName = profile?.display_name || user.email?.split('@')[0] || 'Host';
+    setUserDisplayName(defaultName);
+    setActiveRoomId(newRoomId);
+    setCurrentView('lobby');
+  };
+
+  // Join Existing Room via Code (Validates against Supabase active rooms)
+  const handleJoinSubmit = async (e) => {
     e.preventDefault();
     const targetRoom = roomCode.trim();
-    if (targetRoom) {
+    if (!targetRoom) return;
+
+    setCodeError('');
+    setIsCheckingCode(true);
+
+    try {
+      // Validate that room exists and is active in Supabase
+      const { data: roomData, error } = await supabase
+        .from('rooms')
+        .select('id, status')
+        .eq('id', targetRoom)
+        .eq('status', 'active')
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error verifying room in Supabase:', error);
+        setCodeError('Cannot verify meeting room right now. Please try again.');
+        return;
+      }
+
+      if (!roomData) {
+        setCodeError('Meeting code does not exist or has ended.');
+        return;
+      }
+
+      // Room is valid and active
       setActiveRoomId(targetRoom);
+      if (user) {
+        setUserDisplayName(profile?.display_name || user.email?.split('@')[0] || '');
+      } else {
+        setUserDisplayName(''); // Guest will enter their name in lobby
+      }
       setCurrentView('lobby');
       setShowCodeInput(false);
       setRoomCode('');
+    } catch (err) {
+      console.error('Unexpected error checking room:', err);
+      setCodeError('Failed to verify meeting code.');
+    } finally {
+      setIsCheckingCode(false);
     }
   };
 
-  const handleEnterMeetingFromLobby = () => {
+  // Join Meeting from User Dashboard
+  const handleJoinMeetingFromDashboard = (cleanRoomId) => {
+    setActiveRoomId(cleanRoomId);
+    setUserDisplayName(profile?.display_name || user.email?.split('@')[0] || '');
+    setCurrentView('lobby');
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    setCurrentView('home');
+    setActiveRoomId('');
+  };
+
+  const handleEnterMeetingFromLobby = (chosenName) => {
+    if (chosenName) {
+      setUserDisplayName(chosenName);
+    }
     setCurrentView('room');
     if (!isConnected) {
       toggleConnection();
@@ -80,7 +188,12 @@ export default function App() {
 
   const handleLeaveRoom = () => {
     leaveRoom();
-    setCurrentView('home');
+    setCurrentView(user ? 'dashboard' : 'home');
+    setActiveRoomId('');
+  };
+
+  const handleBackHomeFromLobby = () => {
+    setCurrentView(user ? 'dashboard' : 'home');
     setActiveRoomId('');
   };
 
@@ -96,6 +209,19 @@ export default function App() {
     );
   }
 
+  // Render User Dashboard (When authenticated and on dashboard view)
+  if (user && currentView === 'dashboard') {
+    return (
+      <UserDashboard
+        user={user}
+        profile={profile}
+        onSignOut={handleSignOut}
+        onCreateMeeting={handleCreateNewMeeting}
+        onJoinMeeting={handleJoinMeetingFromDashboard}
+      />
+    );
+  }
+
   // Render Waiting Lobby View
   if (currentView === 'lobby') {
     return (
@@ -103,7 +229,9 @@ export default function App() {
         roomId={activeRoomId}
         mediaState={mediaState}
         onJoinMeeting={handleEnterMeetingFromLobby}
-        onBackHome={() => setCurrentView('home')}
+        onBackHome={handleBackHomeFromLobby}
+        initialDisplayName={userDisplayName || profile?.display_name || (user ? user.email?.split('@')[0] : '')}
+        isAuthenticated={!!user}
       />
     );
   }
@@ -115,11 +243,13 @@ export default function App() {
         roomId={activeRoomId}
         onLeaveRoom={handleLeaveRoom}
         mediaState={mediaState}
+        userName={userDisplayName || (user ? user.email?.split('@')[0] : 'Participant')}
+        currentUser={user}
       />
     );
   }
 
-  // Render Home View
+  // Render Home View (Preserving exact original UI design for non-logged-in users)
   return (
     <div className="w-screen h-screen overflow-hidden bg-white text-slate-900 flex flex-col justify-between px-8 md:px-14 lg:px-20 py-4 md:py-6 font-sans select-none">
       {/* Main Hero Section & Compact Logo */}
@@ -151,11 +281,20 @@ export default function App() {
 
           {/* CTAs Row */}
           <div className="flex items-center space-x-4 pt-2">
-            <button className="bg-[#5CA0F2] hover:bg-[#4A8FE0] text-white font-semibold text-sm md:text-base px-8 py-3 rounded-full shadow-sm transition-colors">
-              Log In
+            <button
+              onClick={() => {
+                setAuthModalMode('login');
+                setAuthModalOpen(true);
+              }}
+              className="bg-[#5CA0F2] hover:bg-[#4A8FE0] text-white font-semibold text-sm md:text-base px-8 py-3 rounded-full shadow-sm transition-colors cursor-pointer"
+            >
+              Sign In
             </button>
-            <button className="bg-white border border-[#5CA0F2]/70 text-[#5CA0F2] hover:bg-blue-50/50 font-semibold text-sm md:text-base px-8 py-3 rounded-full transition-colors">
-              Register
+            <button
+              type="button"
+              className="bg-white border border-[#5CA0F2]/70 text-[#5CA0F2] hover:bg-blue-50/50 font-semibold text-sm md:text-base px-8 py-3 rounded-full transition-colors cursor-pointer"
+            >
+              About SLMeet
             </button>
           </div>
 
@@ -163,8 +302,11 @@ export default function App() {
           <div className="flex items-center space-x-6 text-xs md:text-sm text-slate-600 pt-4">
             <span>Join a meeting now</span>
             <button
-              onClick={() => setShowCodeInput(true)}
-              className="text-[#5CA0F2] font-semibold underline underline-offset-4"
+              onClick={() => {
+                setShowCodeInput(true);
+                setCodeError('');
+              }}
+              className="text-[#5CA0F2] font-semibold underline underline-offset-4 cursor-pointer"
             >
               Enter code
             </button>
@@ -188,40 +330,68 @@ export default function App() {
         </div>
       </main>
 
-      {/* Enter Code Modal Popup */}
+      {/* Enter Code Modal Popup with DB Validation */}
       {showCodeInput && (
         <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border border-slate-100">
             <h3 className="text-lg font-bold text-slate-900 mb-1">Join a Meeting</h3>
-            <p className="text-xs text-slate-500 mb-4">Enter any room ID to join or create a meeting room.</p>
+            <p className="text-xs text-slate-500 mb-4">
+              Enter the meeting code provided by the host to join.
+            </p>
+
+            {codeError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center space-x-2 text-xs text-red-600">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{codeError}</span>
+              </div>
+            )}
+
             <form onSubmit={handleJoinSubmit} className="space-y-4">
               <input
                 type="text"
-                placeholder="e.g. room-123"
+                placeholder="e.g. slm-abc-xyz"
                 value={roomCode}
-                onChange={(e) => setRoomCode(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-[#5CA0F2]"
+                onChange={(e) => {
+                  setRoomCode(e.target.value);
+                  if (codeError) setCodeError('');
+                }}
+                className={`w-full px-4 py-2.5 rounded-xl border text-sm focus:outline-none transition-colors ${
+                  codeError ? 'border-red-400 focus:border-red-500' : 'border-slate-300 focus:border-[#5CA0F2]'
+                }`}
                 autoFocus
               />
               <div className="flex justify-end space-x-3">
                 <button
                   type="button"
-                  onClick={() => setShowCodeInput(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 border border-slate-200"
+                  onClick={() => {
+                    setShowCodeInput(false);
+                    setRoomCode('');
+                    setCodeError('');
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 border border-slate-200 cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl text-xs font-semibold text-white bg-[#5CA0F2]"
+                  disabled={isCheckingCode || !roomCode.trim()}
+                  className="px-5 py-2 rounded-xl text-xs font-semibold text-white bg-[#5CA0F2] hover:bg-[#4A8FE0] disabled:bg-[#5CA0F2]/60 cursor-pointer flex items-center space-x-2"
                 >
-                  Join Meeting
+                  {isCheckingCode && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{isCheckingCode ? 'Verifying...' : 'Join Meeting'}</span>
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      {/* Auth Modal for Sign In / Sign Up */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        initialMode={authModalMode}
+      />
 
       {/* Bottom Right Status Bar Pill */}
       <footer className="w-full flex justify-end items-center pt-4">

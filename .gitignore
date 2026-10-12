@@ -38,7 +38,7 @@ pictures/
 
 # CodeGraph
 .codegraph/
-
 # Agents
 .agents
 agents/
+skills-lock.json

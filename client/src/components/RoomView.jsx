@@ -13,7 +13,13 @@ import MeetingParticipantsDrawer from './room/MeetingParticipantsDrawer';
 /**
  * Top-Level Room Layout Container Component
  */
-export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMediaState }) {
+export default function RoomView({
+  roomId,
+  onLeaveRoom,
+  mediaState: externalMediaState,
+  userName = 'You',
+  currentUser = null,
+}) {
   // Real-Time ASL Sentence Aggregator Hook (Buffers raw gestures into fluent sentences with auto-clearing)
   const { currentSentence, transcriptLogs, pushGesture } = useAslAggregator(1500, 8, 700);
 
@@ -83,11 +89,15 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
     if (!isConnected) {
       toggleConnection();
     }
-    joinRoom(roomId);
+    joinRoom(roomId, {
+      name: userName || 'Participant',
+      userId: currentUser?.id || null,
+      isGuest: !currentUser,
+    });
     return () => {
       leaveRoom();
     };
-  }, [roomId]);
+  }, [roomId, userName, currentUser]);
 
   // Broadcast local camera, mic, and AI Vision status changes to all room peers
   useEffect(() => {
@@ -190,9 +200,10 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
   };
 
   // Dynamic Participants Roster constructed from local state, socket roomUsers, and WebRTC peerStreams
+  const localDisplayName = userName ? `${userName} (You)` : 'You';
   const localCameraParticipant = {
     id: 'local',
-    name: 'You',
+    name: localDisplayName,
     isLocal: true,
     isScreenSharing: false,
     isCameraOff,
@@ -206,7 +217,7 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
   const localPresentationParticipant = isScreenSharing
     ? {
         id: 'local-screen',
-        name: 'You (Presentation)',
+        name: userName ? `${userName} (Presentation)` : 'You (Presentation)',
         isLocal: true,
         isScreenSharing: true,
         isCameraOff: false,
@@ -328,11 +339,11 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
     (data) => {
       if (data && data.gesture) {
         setActiveSignerId('local');
-        pushGesture('You', data.gesture, data.confidence);
+        pushGesture(userName || 'You', data.gesture, data.confidence);
         sendGesture({ gesture: data.gesture, confidence: data.confidence || 0.95 });
       }
     },
-    [sendGesture, pushGesture]
+    [sendGesture, pushGesture, userName]
   );
 
   const handleExportTranscript = useCallback(() => {
@@ -351,9 +362,9 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
     <div className="w-screen h-screen max-h-screen bg-[#121212] text-white flex flex-col justify-between p-3.5 sm:p-5 md:p-6 font-sans select-none overflow-hidden">
       {/* Top Header Room Info */}
       <header className="w-full text-xs md:text-sm font-semibold text-slate-400 flex items-center justify-between z-10 shrink-0 select-none">
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-1.5">
           <span>Room ID:</span>
-          <span className="font-mono font-bold text-white bg-slate-800/80 px-2.5 py-1 rounded-md border border-slate-700/60 shadow-sm tracking-wide">
+          <span className="font-mono font-bold text-white tracking-wide select-all cursor-text">
             {roomId}
           </span>
         </div>

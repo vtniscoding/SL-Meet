@@ -222,15 +222,17 @@ io.on('connection', (socket) => {
   // Room management
   socket.on('join_room', ({ roomId, userMeta }) => {
     socket.join(roomId);
+    const isGuest = !!userMeta?.isGuest;
+
     if (!rooms.has(roomId)) {
       rooms.set(roomId, {
-        hostId: socket.id,
+        hostId: isGuest ? null : socket.id,
         members: new Map(),
       });
     }
 
     const roomData = rooms.get(roomId);
-    if (!roomData.hostId || !roomData.members.has(roomData.hostId)) {
+    if ((!roomData.hostId || !roomData.members.has(roomData.hostId)) && !isGuest) {
       roomData.hostId = socket.id;
     }
 
@@ -243,7 +245,7 @@ io.on('connection', (socket) => {
       isMuted: meta?.isMuted || false,
       isCameraOff: meta?.isCameraOff || false,
       isAiVisionActive: meta?.isAiVisionActive || false,
-      isHost: id === roomData.hostId,
+      isHost: !meta?.isGuest && id === roomData.hostId,
     }));
 
     const clientMeta = userMeta || { name: `Participant ${socket.id.slice(0, 4)}` };
@@ -252,9 +254,10 @@ io.on('connection', (socket) => {
     clientMeta.isMuted = userMeta?.isMuted || false;
     clientMeta.isCameraOff = userMeta?.isCameraOff || false;
     clientMeta.isAiVisionActive = userMeta?.isAiVisionActive || false;
+    clientMeta.isGuest = isGuest;
     roomMembers.set(socket.id, clientMeta);
 
-    console.log(`[Join Room] Client ${socket.id} joined room ${roomId} (Host: ${roomData.hostId})`);
+    console.log(`[Join Room] Client ${socket.id} joined room ${roomId} (Host: ${roomData.hostId || 'None'}) - Guest: ${isGuest}`);
 
     // Send list of existing room members & hostId to the newly joined client
     socket.emit('room_users', {

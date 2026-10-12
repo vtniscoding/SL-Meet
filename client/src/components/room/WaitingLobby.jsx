@@ -10,7 +10,12 @@ export default function WaitingLobby({
   mediaState,
   onJoinMeeting,
   onBackHome,
+  initialDisplayName = '',
+  isAuthenticated = false,
 }) {
+  const [displayName, setDisplayName] = React.useState(initialDisplayName);
+  const [nameError, setNameError] = React.useState('');
+
   const {
     videoRef,
     localStream,
@@ -29,6 +34,23 @@ export default function WaitingLobby({
     toggleMic,
     toggleCamera,
   } = mediaState;
+
+  // Sync initialDisplayName if it becomes available asynchronously (e.g. from profile)
+  useEffect(() => {
+    if (initialDisplayName && !displayName) {
+      setDisplayName(initialDisplayName);
+    }
+  }, [initialDisplayName]);
+
+  const handleJoinClick = () => {
+    const trimmed = displayName.trim();
+    if (!trimmed) {
+      setNameError('Please enter your name to join the meeting.');
+      return;
+    }
+    setNameError('');
+    onJoinMeeting(trimmed);
+  };
 
   // Bind localStream to video DOM element whenever Lobby mounts or stream updates
   useEffect(() => {
@@ -128,8 +150,40 @@ export default function WaitingLobby({
           <div className="text-center">
             <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">Ready to join?</h1>
             <p className="text-xs md:text-sm text-slate-500 mt-1.5 text-center">
-              Check your camera and audio settings before entering room
+              Configure your display name and check your camera/audio settings
             </p>
+          </div>
+
+          {/* User Display Name Input Field */}
+          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-slate-700 flex items-center space-x-1.5">
+                <User className="w-3.5 h-3.5 text-[#5CA0F2]" />
+                <span>Your Name</span>
+                {!isAuthenticated && <span className="text-red-500 text-xs">*</span>}
+              </label>
+              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">
+                {isAuthenticated ? 'Signed In' : 'Guest'}
+              </span>
+            </div>
+            <input
+              type="text"
+              placeholder="Enter your name..."
+              value={displayName}
+              onChange={(e) => {
+                setDisplayName(e.target.value);
+                if (nameError) setNameError('');
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleJoinClick();
+              }}
+              className={`w-full bg-white text-slate-800 text-xs rounded-xl px-3.5 py-2.5 border transition-colors focus:outline-none ${
+                nameError ? 'border-red-400 focus:border-red-500' : 'border-slate-300 focus:border-[#5CA0F2]'
+              }`}
+            />
+            {nameError && (
+              <p className="text-[11px] text-red-500 font-medium pl-1 pt-0.5">{nameError}</p>
+            )}
           </div>
 
           {/* Hardware Device Configuration Options */}
@@ -196,7 +250,7 @@ export default function WaitingLobby({
 
           {/* Join Meeting Action Button */}
           <button
-            onClick={onJoinMeeting}
+            onClick={handleJoinClick}
             className="w-full bg-[#5CA0F2] hover:bg-[#4A8FE0] text-white font-bold text-sm py-3.5 rounded-2xl shadow-md transition-all outline-none focus:outline-none cursor-pointer"
           >
             Join now
