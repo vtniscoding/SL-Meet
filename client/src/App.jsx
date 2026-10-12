@@ -9,7 +9,7 @@ import { useLocalMedia } from './hooks/useLocalMedia';
 import { useSocket } from './hooks/useSocket';
 import { useAuth } from './context/AuthContext';
 import { supabase } from './utils/supabase';
-import { fetchDatasetFromServer } from './services/gestureClassifier';
+import { fetchDatasetFromServer, initRealtimeDatasetSync } from './services/gestureClassifier';
 
 export default function App() {
   const [currentView, setCurrentView] = useState('home'); // 'home' | 'dashboard' | 'lobby' | 'room'
@@ -25,16 +25,20 @@ export default function App() {
 
   const { user, profile, signOut } = useAuth();
 
-  // Auto-fetch active ASL dataset from backend Server API on app mount
+  // Auto-fetch active ASL dataset and connect to Supabase Realtime for live gesture dataset syncing
   useEffect(() => {
     fetchDatasetFromServer();
+    const gestureChannel = initRealtimeDatasetSync();
 
     const handleHashChange = () => {
       setIsAdminRoute(window.location.hash === '#admin');
     };
 
     window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+      if (gestureChannel?.unsubscribe) gestureChannel.unsubscribe();
+    };
   }, []);
 
   // When user is authenticated, redirect to User Dashboard if currently on Home

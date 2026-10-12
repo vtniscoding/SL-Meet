@@ -21,7 +21,13 @@ export default function RoomView({
   currentUser = null,
 }) {
   // Real-Time ASL Sentence Aggregator Hook (Buffers raw gestures into fluent sentences with auto-clearing)
-  const { currentSentence, transcriptLogs, pushGesture } = useAslAggregator(1500, 8, 700);
+  const { currentSentence, transcriptLogs, pushGesture, notifyHandReset } = useAslAggregator(
+    2800,
+    7,
+    650,
+    2200,
+    1800
+  );
 
   // Modular Local Media Stream & VAD Hook
   const internalMediaState = useLocalMedia();
@@ -341,9 +347,11 @@ export default function RoomView({
         setActiveSignerId('local');
         pushGesture(userName || 'You', data.gesture, data.confidence);
         sendGesture({ gesture: data.gesture, confidence: data.confidence || 0.95 });
+      } else {
+        notifyHandReset?.();
       }
     },
-    [sendGesture, pushGesture, userName]
+    [sendGesture, pushGesture, userName, notifyHandReset]
   );
 
   const handleExportTranscript = useCallback(() => {
