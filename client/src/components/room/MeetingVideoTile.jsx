@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { User, MicOff, Pin, PinOff } from 'lucide-react';
 import AslSubtitleOverlay from './AslSubtitleOverlay';
-import { createMediaPipeHandsInstance, drawHandResults, classifyGesture } from '../../services/mediapipe';
 
 /**
  * Semantic Component: Renders a single 16:9 video tile with stream attachment,
@@ -16,7 +15,7 @@ export default function MeetingVideoTile({
   isAiEnabled,
   isHandTrackingEnabled = true,
   subtitleText,
-  onGestureDetected,
+  onRegisterCanvas,
 }) {
   const { id, name, isLocal, isCameraOff, isMuted, isSpeaking, isActiveSpeaker, isScreenSharing, stream: tileStream, hasStream } = participant;
   const tileVideoRef = useRef(null);
@@ -47,75 +46,19 @@ export default function MeetingVideoTile({
     }
   }, [isLocal, isScreenSharing, externalVideoRef]);
 
-  const onGestureDetectedRef = useRef(onGestureDetected);
+  // Register local canvas element with background MediaPipe worker
   useEffect(() => {
-    onGestureDetectedRef.current = onGestureDetected;
-  }, [onGestureDetected]);
-
-  // MediaPipe AI Hand Landmark Tracking Loop for Active Camera Streams (Local Webcam ONLY)
-  useEffect(() => {
-    if (!isLocal || isCameraOff || isScreenSharing || !isHandTrackingEnabled) {
+    if (isLocal && !isScreenSharing && onRegisterCanvas) {
       if (canvasRef.current) {
-        const ctx = canvasRef.current.getContext('2d');
-        ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+        onRegisterCanvas(canvasRef.current);
       }
-      return;
     }
-
-    let animFrameId = null;
-    let handsInstance = null;
-
-    try {
-      handsInstance = createMediaPipeHandsInstance((results) => {
-        if (canvasRef.current) {
-          const video = tileVideoRef.current;
-          if (video && video.videoWidth && video.videoHeight) {
-            canvasRef.current.width = video.videoWidth;
-            canvasRef.current.height = video.videoHeight;
-            const ctx = canvasRef.current.getContext('2d');
-            if (isHandTrackingEnabled) {
-              drawHandResults(ctx, results);
-            } else {
-              ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-            }
-          }
-        }
-
-        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-          const { gesture, confidence } = classifyGesture(
-            results.multiHandLandmarks[0],
-            results.multiHandedness?.[0],
-            results.multiHandLandmarks,
-            results.multiHandedness
-          );
-          if (gesture && gesture !== 'Signing...' && onGestureDetectedRef.current) {
-            onGestureDetectedRef.current({ gesture, confidence });
-          }
-        }
-      });
-
-      const processFrame = async () => {
-        const video = tileVideoRef.current;
-        if (video && video.readyState >= 2 && !video.paused && !video.ended) {
-          try {
-            await handsInstance.send({ image: video });
-          } catch (err) {
-            // Ignore frame drop errors
-          }
-        }
-        animFrameId = requestAnimationFrame(processFrame);
-      };
-
-      animFrameId = requestAnimationFrame(processFrame);
-    } catch (err) {
-      console.warn('MediaPipe initialization warning:', err);
-    }
-
     return () => {
-      if (animFrameId) cancelAnimationFrame(animFrameId);
-      if (handsInstance) handsInstance.close();
+      if (isLocal && onRegisterCanvas) {
+        onRegisterCanvas(null);
+      }
     };
-  }, [isLocal, isCameraOff, isScreenSharing, isAiEnabled, isHandTrackingEnabled]);
+  }, [isLocal, isScreenSharing, onRegisterCanvas]);
 
   return (
     <div
@@ -143,13 +86,16 @@ export default function MeetingVideoTile({
         } ${isCameraOff && !isScreenSharing ? 'hidden' : 'block'}`}
       />
 
-      {/* MediaPipe AI Hand Tracking Overlay Canvas */}
-      {!isScreenSharing && (isAiEnabled || isHandTrackingEnabled) && !isCameraOff && (
+      {/* MediaPipe AI Hand Tracking Overlay Canvas (Local camera only) */}
+      {!isScreenSharing && isHandTrackingEnabled && !isCameraOff && isLocal && (
         <canvas
-          ref={canvasRef}
-          className={`absolute inset-0 w-full h-full object-cover pointer-events-none z-10 ${
-            isLocal ? 'transform -scale-x-100' : ''
-          }`}
+          ref={(el) => {
+            canvasRef.current = el;
+            if (isLocal && onRegisterCanvas) {
+              onRegisterCanvas(el);
+            }
+          }}
+          className="absolute inset-0 w-full h-full object-cover pointer-events-none z-10 transform -scale-x-100"
         />
       )}
 

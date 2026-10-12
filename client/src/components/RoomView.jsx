@@ -4,6 +4,7 @@ import { useSocket } from '../hooks/useSocket';
 import { useWebRTC } from '../hooks/useWebRTC';
 import { useScreenShare } from '../hooks/useScreenShare';
 import { useAslAggregator } from '../hooks/useAslAggregator';
+import { useHandTrackingWorker } from '../hooks/useHandTrackingWorker';
 import { downloadMeetingTranscript } from '../utils/exportTranscript';
 import MeetingLayoutEngine from './room/MeetingLayoutEngine';
 import MeetingControlBar from './room/MeetingControlBar';
@@ -331,7 +332,13 @@ export default function RoomView({
   };
 
   const handleToggleHandTracking = () => {
-    setIsHandTrackingEnabled((prev) => !prev);
+    setIsHandTrackingEnabled((prev) => {
+      const next = !prev;
+      if (!next && activeSignerId === 'local') {
+        setActiveSignerId(null);
+      }
+      return next;
+    });
   };
 
   const handleLeave = () => {
@@ -353,6 +360,14 @@ export default function RoomView({
     },
     [sendGesture, pushGesture, userName, notifyHandReset]
   );
+
+  // Persistent Room-Level MediaPipe Hand Tracking Worker (Decoupled from UI video tiles)
+  const { registerCanvas } = useHandTrackingWorker({
+    localStream,
+    isEnabled: isHandTrackingEnabled,
+    isCameraOff,
+    onGestureDetected: handleGestureDetected,
+  });
 
   const handleExportTranscript = useCallback(() => {
     downloadMeetingTranscript(transcriptLogs, roomId);
@@ -392,7 +407,7 @@ export default function RoomView({
             isHandTrackingEnabled={isHandTrackingEnabled}
             activeSignerId={effectiveSignerId}
             subtitleText={currentSentence}
-            onGestureDetected={handleGestureDetected}
+            onRegisterCanvas={registerCanvas}
           />
         </div>
 

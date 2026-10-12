@@ -16,7 +16,7 @@ export default function MeetingLayoutEngine({
   isHandTrackingEnabled,
   activeSignerId,
   subtitleText,
-  onGestureDetected,
+  onRegisterCanvas,
 }) {
   const pinnedParticipant = participants.find((p) => p.id === pinnedId);
   const mainParticipant = pinnedParticipant || participants.find((p) => p.isActiveSpeaker) || participants[0];
@@ -75,7 +75,7 @@ export default function MeetingLayoutEngine({
             isAiEnabled={shouldShowSubOnTile(mainParticipant)}
             isHandTrackingEnabled={mainParticipant.isLocal ? isHandTrackingEnabled : false}
             subtitleText={subtitleText}
-            onGestureDetected={onGestureDetected}
+            onRegisterCanvas={onRegisterCanvas}
           />
         </div>
 
@@ -91,7 +91,7 @@ export default function MeetingLayoutEngine({
               isAiEnabled={shouldShowSubOnTile(floatingParticipant)}
               isHandTrackingEnabled={floatingParticipant.isLocal ? isHandTrackingEnabled : false}
               subtitleText={subtitleText}
-              onGestureDetected={onGestureDetected}
+              onRegisterCanvas={onRegisterCanvas}
             />
           </div>
         )}
@@ -120,7 +120,7 @@ export default function MeetingLayoutEngine({
               isAiEnabled={shouldShowSubOnTile(mainParticipant)}
               isHandTrackingEnabled={mainParticipant.isLocal ? isHandTrackingEnabled : false}
               subtitleText={subtitleText}
-              onGestureDetected={onGestureDetected}
+              onRegisterCanvas={onRegisterCanvas}
             />
           </div>
         </div>
@@ -141,7 +141,7 @@ export default function MeetingLayoutEngine({
                 isAiEnabled={shouldShowSubOnTile(p)}
                 isHandTrackingEnabled={p.isLocal ? isHandTrackingEnabled : false}
                 subtitleText={subtitleText}
-                onGestureDetected={onGestureDetected}
+                onRegisterCanvas={onRegisterCanvas}
               />
             </div>
           ))}
@@ -192,7 +192,7 @@ export default function MeetingLayoutEngine({
               isAiEnabled={shouldShowSubOnTile(p)}
               isHandTrackingEnabled={p.isLocal ? isHandTrackingEnabled : false}
               subtitleText={subtitleText}
-              onGestureDetected={onGestureDetected}
+              onRegisterCanvas={onRegisterCanvas}
             />
           </div>
         ))}
