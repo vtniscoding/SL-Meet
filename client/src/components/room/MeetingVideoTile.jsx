@@ -52,9 +52,9 @@ export default function MeetingVideoTile({
     onGestureDetectedRef.current = onGestureDetected;
   }, [onGestureDetected]);
 
-  // MediaPipe AI Hand Landmark Tracking Loop for Active Camera Streams (Local & Remote)
+  // MediaPipe AI Hand Landmark Tracking Loop for Active Camera Streams (Local Webcam ONLY)
   useEffect(() => {
-    if (isCameraOff || isScreenSharing || (!isAiEnabled && !isHandTrackingEnabled)) {
+    if (!isLocal || isCameraOff || isScreenSharing || !isHandTrackingEnabled) {
       if (canvasRef.current) {
         const ctx = canvasRef.current.getContext('2d');
         ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
@@ -193,8 +193,8 @@ export default function MeetingVideoTile({
         </button>
       </div>
 
-      {/* Floating ASL Subtitle Overlay (Renders whenever viewer enables AI CC) */}
-      {isAiEnabled && (isLocal || isActiveSpeaker || subtitleText) && (
+      {/* Floating ASL Subtitle Overlay (Renders on designated signer tile whenever viewer enables AI CC) */}
+      {isAiEnabled && subtitleText && (
         <AslSubtitleOverlay subtitleText={subtitleText} />
       )}
     </div>

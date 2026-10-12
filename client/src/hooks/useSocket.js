@@ -71,6 +71,7 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
           mediaMap[p.userId] = {
             isMuted: !!p.isMuted,
             isCameraOff: !!p.isCameraOff,
+            isAiVisionActive: !!p.isAiVisionActive,
           };
         }
       });
@@ -89,6 +90,7 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
           [data.userId]: {
             isMuted: !!data.userMeta.isMuted,
             isCameraOff: !!data.userMeta.isCameraOff,
+            isAiVisionActive: !!data.userMeta.isAiVisionActive,
           },
         }));
       }
@@ -157,6 +159,7 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
         [data.senderId]: {
           isMuted: !!data.isMuted,
           isCameraOff: !!data.isCameraOff,
+          isAiVisionActive: !!data.isAiVisionActive,
         },
       }));
     };
@@ -268,13 +271,14 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
     }
   };
 
-  const sendMediaStatusChange = (isMuted, isCameraOff) => {
+  const sendMediaStatusChange = (isMuted, isCameraOff, isAiVisionActive) => {
     const socket = getSocket(serverUrl);
     if (socket.connected && currentRoom) {
       socket.emit('media_status_change', {
         roomId: currentRoom,
         isMuted: !!isMuted,
         isCameraOff: !!isCameraOff,
+        isAiVisionActive: !!isAiVisionActive,
       });
     }
   };

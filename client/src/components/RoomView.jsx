@@ -61,6 +61,23 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
   // WebRTC Real-Time P2P Video/Audio Streaming Hook
   const { peerStreams, peerScreenStreams } = useWebRTC(roomId, localStream, screenStream, presentingUsers);
 
+  // Meeting Room Layout Modes: 'tiled' (Auto Grid) | 'sidebar' (Thanh bên) | 'spotlight' (Tiêu điểm)
+  const [layoutMode, setLayoutMode] = useState('tiled');
+  const [pinnedId, setPinnedId] = useState(null);
+  const [isAiEnabled, setIsAiEnabled] = useState(false);
+  const [isHandTrackingEnabled, setIsHandTrackingEnabled] = useState(false);
+  const [subtitleText, setSubtitleText] = useState('AI Subtitle Standby');
+  const [activeSignerId, setActiveSignerId] = useState(null);
+
+  // In-Call Real-Time Chat & People Drawers state (Mutually Exclusive)
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isPeopleOpen, setIsPeopleOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const prevLocalPresentingRef = useRef(false);
+  const prevRemotePresenterRef = useRef(null);
+  const lastMessageCountRef = useRef(0);
+
   // Auto connect & join room socket channel
   useEffect(() => {
     if (!isConnected) {
@@ -72,12 +89,12 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
     };
   }, [roomId]);
 
-  // Broadcast local camera & mic status changes to all room peers
+  // Broadcast local camera, mic, and AI Vision status changes to all room peers
   useEffect(() => {
     if (sendMediaStatusChange && isConnected) {
-      sendMediaStatusChange(isMuted, isCameraOff);
+      sendMediaStatusChange(isMuted, isCameraOff, isHandTrackingEnabled);
     }
-  }, [isMuted, isCameraOff, isConnected, sendMediaStatusChange]);
+  }, [isMuted, isCameraOff, isHandTrackingEnabled, isConnected, sendMediaStatusChange]);
 
   // Listen for host remote moderation events (remote mute request / kicked)
   useEffect(() => {
@@ -107,13 +124,12 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
         const sender = roomUsers.find((u) => u.userId === latest.senderId);
         const senderName = sender?.userMeta?.name || `Participant ${latest.senderId?.slice(0, 4)}`;
         pushGesture(senderName, latest.gesture);
+        if (latest.senderId) {
+          setActiveSignerId(latest.senderId);
+        }
       }
     }
   }, [remoteGestures, roomUsers, pushGesture]);
-
-
-  const prevLocalPresentingRef = useRef(false);
-  const prevRemotePresenterRef = useRef(null);
 
   // Broadcast screen sharing status & auto layout switch ONCE when local user starts presenting
   useEffect(() => {
@@ -138,19 +154,6 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
       prevRemotePresenterRef.current = null;
     }
   }, [presentingUsers]);
-
-  // Meeting Room Layout Modes: 'tiled' (Auto Grid) | 'sidebar' (Thanh bên) | 'spotlight' (Tiêu điểm)
-  const [layoutMode, setLayoutMode] = useState('tiled');
-  const [pinnedId, setPinnedId] = useState(null);
-  const [isAiEnabled, setIsAiEnabled] = useState(false);
-  const [isHandTrackingEnabled, setIsHandTrackingEnabled] = useState(false);
-  const [subtitleText, setSubtitleText] = useState('AI Subtitle Standby');
-
-  // In-Call Real-Time Chat & People Drawers state (Mutually Exclusive)
-  const [isChatOpen, setIsChatOpen] = useState(false);
-  const [isPeopleOpen, setIsPeopleOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const lastMessageCountRef = useRef(0);
 
   useEffect(() => {
     if (chatMessages.length > lastMessageCountRef.current) {
@@ -196,6 +199,7 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
     isMuted,
     isSpeaking,
     isActiveSpeaker: true,
+    isAiVisionActive: isHandTrackingEnabled,
     stream: localStream,
   };
 
@@ -209,6 +213,7 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
         isMuted: true,
         isSpeaking: false,
         isActiveSpeaker: true,
+        isAiVisionActive: false,
         stream: screenStream,
       }
     : null;
@@ -241,6 +246,8 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
           ? !peerVideoTrack.enabled
           : false;
 
+      const isPeerAiVisionActive = peerMedia.isAiVisionActive || false;
+
       // 1. Peer Camera Tile
       remoteParticipants.push({
         id: u.userId,
@@ -251,6 +258,7 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
         isMuted: isPeerMuted,
         isSpeaking: false,
         isActiveSpeaker: false,
+        isAiVisionActive: isPeerAiVisionActive,
         hasStream: !!peerStream,
         stream: peerStream || null,
       });
@@ -305,6 +313,7 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
   const handleGestureDetected = useCallback(
     (data) => {
       if (data && data.gesture) {
+        setActiveSignerId('local');
         pushGesture('You', data.gesture, data.confidence);
         sendGesture({ gesture: data.gesture, confidence: data.confidence || 0.95 });
       }
@@ -315,6 +324,14 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
   const handleExportTranscript = useCallback(() => {
     downloadMeetingTranscript(transcriptLogs, roomId);
   }, [transcriptLogs, roomId]);
+
+  // Compute candidate signer: prioritize recent gesture sender, fallback to whoever has AI Vision ON
+  const activeAiVisionPeerId = Object.keys(peerMediaStatus).find(
+    (peerId) => peerMediaStatus[peerId]?.isAiVisionActive
+  );
+  const effectiveSignerId =
+    activeSignerId ||
+    (isHandTrackingEnabled ? 'local' : activeAiVisionPeerId || null);
 
   return (
     <div className="w-screen h-screen max-h-screen bg-[#121212] text-white flex flex-col justify-between p-6 font-sans select-none overflow-hidden">
@@ -340,6 +357,7 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
             onTogglePin={handleTogglePin}
             isAiEnabled={isAiEnabled}
             isHandTrackingEnabled={isHandTrackingEnabled}
+            activeSignerId={effectiveSignerId}
             subtitleText={currentSentence}
             onGestureDetected={handleGestureDetected}
           />

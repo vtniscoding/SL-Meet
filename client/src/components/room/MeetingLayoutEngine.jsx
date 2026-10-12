@@ -14,12 +14,37 @@ export default function MeetingLayoutEngine({
   onTogglePin,
   isAiEnabled,
   isHandTrackingEnabled,
+  activeSignerId,
   subtitleText,
   onGestureDetected,
 }) {
   const pinnedParticipant = participants.find((p) => p.id === pinnedId);
   const mainParticipant = pinnedParticipant || participants.find((p) => p.isActiveSpeaker) || participants[0];
   const localParticipant = participants.find((p) => p.isLocal) || participants[0];
+
+  // Determine whether subtitle overlay should render on a given video tile
+  const shouldShowSubOnTile = (p) => {
+    if (!isAiEnabled || !p) return false;
+
+    // 1. If an active signer is designated by recent gestures
+    if (activeSignerId) {
+      return p.id === activeSignerId;
+    }
+    // 2. If this participant has AI Vision turned ON
+    if (p.isAiVisionActive) {
+      return true;
+    }
+    // 3. In 2-person meeting, viewer turns on Sub -> target the other participant
+    const remotePeers = participants.filter((part) => !part.isLocal);
+    if (remotePeers.length === 1) {
+      if (isHandTrackingEnabled) {
+        return p.isLocal;
+      }
+      return remotePeers[0].id === p.id;
+    }
+    // 4. Fallback: show on local if local is the active user
+    return p.isLocal;
+  };
 
   if (!participants || participants.length === 0 || !mainParticipant) {
     return (
@@ -47,8 +72,8 @@ export default function MeetingLayoutEngine({
             localStream={mainParticipant.isLocal ? localStream : null}
             isPinned={pinnedId === mainParticipant.id}
             onTogglePin={onTogglePin}
-            isAiEnabled={isAiEnabled}
-            isHandTrackingEnabled={isHandTrackingEnabled}
+            isAiEnabled={shouldShowSubOnTile(mainParticipant)}
+            isHandTrackingEnabled={mainParticipant.isLocal ? isHandTrackingEnabled : false}
             subtitleText={subtitleText}
             onGestureDetected={onGestureDetected}
           />
@@ -63,8 +88,8 @@ export default function MeetingLayoutEngine({
               localStream={floatingParticipant.isLocal ? localStream : null}
               isPinned={pinnedId === floatingParticipant.id}
               onTogglePin={onTogglePin}
-              isAiEnabled={false}
-              isHandTrackingEnabled={isHandTrackingEnabled}
+              isAiEnabled={shouldShowSubOnTile(floatingParticipant)}
+              isHandTrackingEnabled={floatingParticipant.isLocal ? isHandTrackingEnabled : false}
               subtitleText={subtitleText}
               onGestureDetected={onGestureDetected}
             />
@@ -92,8 +117,8 @@ export default function MeetingLayoutEngine({
               localStream={mainParticipant.isLocal ? localStream : null}
               isPinned={pinnedId === mainParticipant.id}
               onTogglePin={onTogglePin}
-              isAiEnabled={isAiEnabled}
-              isHandTrackingEnabled={isHandTrackingEnabled}
+              isAiEnabled={shouldShowSubOnTile(mainParticipant)}
+              isHandTrackingEnabled={mainParticipant.isLocal ? isHandTrackingEnabled : false}
               subtitleText={subtitleText}
               onGestureDetected={onGestureDetected}
             />
@@ -113,8 +138,8 @@ export default function MeetingLayoutEngine({
                 localStream={p.isLocal ? localStream : null}
                 isPinned={pinnedId === p.id}
                 onTogglePin={onTogglePin}
-                isAiEnabled={false}
-                isHandTrackingEnabled={isHandTrackingEnabled}
+                isAiEnabled={shouldShowSubOnTile(p)}
+                isHandTrackingEnabled={p.isLocal ? isHandTrackingEnabled : false}
                 subtitleText={subtitleText}
                 onGestureDetected={onGestureDetected}
               />
@@ -164,8 +189,8 @@ export default function MeetingLayoutEngine({
               localStream={p.isLocal ? localStream : null}
               isPinned={pinnedId === p.id}
               onTogglePin={onTogglePin}
-              isAiEnabled={isAiEnabled && (p.isLocal || p.isActiveSpeaker)}
-              isHandTrackingEnabled={isHandTrackingEnabled}
+              isAiEnabled={shouldShowSubOnTile(p)}
+              isHandTrackingEnabled={p.isLocal ? isHandTrackingEnabled : false}
               subtitleText={subtitleText}
               onGestureDetected={onGestureDetected}
             />

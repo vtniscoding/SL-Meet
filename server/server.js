@@ -242,6 +242,7 @@ io.on('connection', (socket) => {
       screenStreamId: meta?.screenStreamId || null,
       isMuted: meta?.isMuted || false,
       isCameraOff: meta?.isCameraOff || false,
+      isAiVisionActive: meta?.isAiVisionActive || false,
       isHost: id === roomData.hostId,
     }));
 
@@ -250,6 +251,7 @@ io.on('connection', (socket) => {
     clientMeta.screenStreamId = null;
     clientMeta.isMuted = userMeta?.isMuted || false;
     clientMeta.isCameraOff = userMeta?.isCameraOff || false;
+    clientMeta.isAiVisionActive = userMeta?.isAiVisionActive || false;
     roomMembers.set(socket.id, clientMeta);
 
     console.log(`[Join Room] Client ${socket.id} joined room ${roomId} (Host: ${roomData.hostId})`);
@@ -346,7 +348,7 @@ io.on('connection', (socket) => {
   });
 
   // Real-Time Camera & Microphone Status Broadcast
-  socket.on('media_status_change', ({ roomId, isMuted, isCameraOff }) => {
+  socket.on('media_status_change', ({ roomId, isMuted, isCameraOff, isAiVisionActive }) => {
     if (roomId && rooms.has(roomId)) {
       const roomData = rooms.get(roomId);
       const roomMembers = roomData.members;
@@ -354,6 +356,7 @@ io.on('connection', (socket) => {
         const meta = roomMembers.get(socket.id);
         meta.isMuted = !!isMuted;
         meta.isCameraOff = !!isCameraOff;
+        meta.isAiVisionActive = !!isAiVisionActive;
         roomMembers.set(socket.id, meta);
       }
       
@@ -361,6 +364,7 @@ io.on('connection', (socket) => {
         senderId: socket.id,
         isMuted: !!isMuted,
         isCameraOff: !!isCameraOff,
+        isAiVisionActive: !!isAiVisionActive,
       });
     }
   });
