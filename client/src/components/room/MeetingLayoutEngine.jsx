@@ -63,9 +63,9 @@ export default function MeetingLayoutEngine({
       : localParticipant;
 
     return (
-      <div className="w-full flex-1 relative flex items-center justify-center my-4 overflow-hidden">
-        {/* 100% Main Spotlight Active Speaker Tile */}
-        <div className="w-full h-full max-h-[82vh] aspect-video rounded-2xl overflow-hidden shadow-2xl mx-auto">
+      <div className="w-full h-full flex-1 relative flex items-center justify-center p-1 overflow-hidden min-h-0">
+        {/* 100% Main Spotlight Active Speaker Tile - Auto Fit within Viewport */}
+        <div className="relative h-full max-h-full w-auto max-w-full aspect-video rounded-2xl overflow-hidden shadow-2xl flex items-center justify-center mx-auto">
           <MeetingVideoTile
             participant={mainParticipant}
             videoRef={mainParticipant.isLocal ? videoRef : null}
@@ -107,10 +107,10 @@ export default function MeetingLayoutEngine({
     const hiddenCount = Math.max(0, sideParticipants.length - MAX_SIDEBAR_SLOTS);
 
     return (
-      <div className="w-full flex-1 grid grid-cols-12 gap-5 my-2 items-center overflow-hidden max-h-[82vh]">
+      <div className="w-full h-full flex-1 grid grid-cols-12 gap-5 items-center overflow-hidden min-h-0">
         {/* Main Speaker / Presentation View (75% - 80% Width) */}
         <div className="col-span-8 lg:col-span-9 h-full min-h-0 flex items-center justify-center">
-          <div className="w-full h-full max-h-[80vh] aspect-video rounded-2xl overflow-hidden shadow-2xl">
+          <div className="relative h-full max-h-full w-auto max-w-full aspect-video rounded-2xl overflow-hidden shadow-2xl flex items-center justify-center">
             <MeetingVideoTile
               participant={mainParticipant}
               videoRef={mainParticipant.isLocal ? videoRef : null}
@@ -176,7 +176,7 @@ export default function MeetingLayoutEngine({
   }
 
   return (
-    <div className="w-full flex-1 flex items-center justify-center my-3 overflow-hidden">
+    <div className="w-full h-full flex-1 flex items-center justify-center my-1 overflow-hidden min-h-0">
       <div className={`w-full ${gridColsClass} gap-6 items-center justify-center mx-auto grid`}>
         {participants.map((p) => (
           <div

@@ -288,11 +288,25 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
   ];
 
   const handleTogglePin = (id) => {
-    setPinnedId((prev) => (prev === id ? null : id));
+    setPinnedId((prev) => {
+      const isUnpinning = prev === id;
+      const nextPinnedId = isUnpinning ? null : id;
+
+      // Google Meet behavior: Pinning switches to spotlight focus; unpinning returns to tiled grid
+      if (nextPinnedId && layoutMode === 'tiled') {
+        setLayoutMode('spotlight');
+      } else if (!nextPinnedId && layoutMode === 'spotlight') {
+        setLayoutMode('tiled');
+      }
+      return nextPinnedId;
+    });
   };
 
   const handleResetPin = () => {
     setPinnedId(null);
+    if (layoutMode === 'spotlight') {
+      setLayoutMode('tiled');
+    }
   };
 
   const handleToggleAi = () => {
@@ -334,7 +348,7 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
     (isHandTrackingEnabled ? 'local' : activeAiVisionPeerId || null);
 
   return (
-    <div className="w-screen h-screen max-h-screen bg-[#121212] text-white flex flex-col justify-between p-6 font-sans select-none overflow-hidden">
+    <div className="w-screen h-screen max-h-screen bg-[#121212] text-white flex flex-col justify-between p-3.5 sm:p-5 md:p-6 font-sans select-none overflow-hidden">
       {/* Top Header Room Info */}
       <header className="w-full text-xs md:text-sm font-semibold text-slate-400 flex items-center justify-between z-10 shrink-0 select-none">
         <div className="flex items-center space-x-2">
@@ -346,7 +360,7 @@ export default function RoomView({ roomId, onLeaveRoom, mediaState: externalMedi
       </header>
 
       {/* Main Workspace: Meeting Layout Engine + Slide-over Chat & People Drawers */}
-      <main className="flex-1 w-full flex items-center justify-between gap-4 overflow-hidden my-3 relative min-h-0">
+      <main className="flex-1 w-full flex items-center justify-between gap-4 overflow-hidden my-1.5 relative min-h-0">
         <div className="flex-1 h-full min-w-0">
           <MeetingLayoutEngine
             participants={updatedParticipants}

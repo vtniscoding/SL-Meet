@@ -9,17 +9,17 @@ export default function AslSubtitleOverlay({ subtitleText = '' }) {
   const displayText = hasText ? subtitleText : '....';
 
   return (
-    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 pointer-events-none max-w-[88%] w-auto flex justify-center text-center transition-all duration-300">
-      <div className="inline-flex flex-col items-center justify-center bg-black/75 text-white px-8 py-3.5 rounded-2xl shadow-2xl tracking-wide text-center min-w-[220px] border-none">
-        {/* Top Centered Header Title: White Color & Bold */}
-        <div className="text-xs md:text-sm font-bold uppercase tracking-widest text-white mb-1 select-none">
+    <div className="absolute bottom-8 md:bottom-10 left-1/2 -translate-x-1/2 z-20 pointer-events-none max-w-[92%] sm:max-w-[75%] w-auto flex justify-center text-center transition-all duration-300">
+      <div className="inline-flex flex-col items-center justify-center bg-black/80 backdrop-blur-md text-white px-6 sm:px-8 py-2.5 sm:py-3 rounded-2xl shadow-2xl tracking-wide text-center min-w-[200px] border border-white/10">
+        {/* Top Centered Header Title: High-Contrast & Compact */}
+        <div className="text-[11px] md:text-xs font-bold uppercase tracking-widest text-slate-300 mb-0.5 select-none">
           TRANSLATION
         </div>
 
         {/* Centered Prominent Subtitle Output */}
         <div
-          className={`text-lg md:text-xl leading-relaxed text-center ${
-            hasText ? 'font-medium text-white' : 'font-mono text-slate-300 tracking-widest'
+          className={`text-base md:text-lg lg:text-xl leading-relaxed text-center ${
+            hasText ? 'font-medium text-white' : 'font-mono text-slate-400 tracking-widest'
           }`}
         >
           {displayText}
