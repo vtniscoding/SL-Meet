@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import {
-  createMediaPipeHandsInstance,
+  getOrCreateMediaPipeHands,
+  setMediaPipeResultsCallback,
   drawHandResults,
   classifyGesture,
 } from '../services/mediapipe';
@@ -87,86 +88,7 @@ export function useHandTrackingWorker({
     }
   }, [localStream, isCameraOff]);
 
-  // 3. Initialize persistent MediaPipe Hands instance once per room session
-  useEffect(() => {
-    let isMounted = true;
-
-    const handleResults = (results) => {
-      if (!isMounted) return;
-
-      // Draw hand landmarks to registered canvas (if currently mounted and enabled)
-      const canvas = activeCanvasRef.current;
-      if (canvas && isEnabledRef.current && !isCameraOffRef.current) {
-        const video = hiddenVideoRef.current;
-        if (video && video.videoWidth && video.videoHeight) {
-          if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-          }
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            drawHandResults(ctx, results);
-          }
-        }
-      }
-
-      // Gesture classification and notification
-      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        const { gesture, confidence } = classifyGesture(
-          results.multiHandLandmarks[0],
-          results.multiHandedness?.[0],
-          results.multiHandLandmarks,
-          results.multiHandedness
-        );
-        if (gesture && gesture !== 'Signing...' && onGestureDetectedRef.current) {
-          onGestureDetectedRef.current({ gesture, confidence });
-        }
-      } else {
-        if (onGestureDetectedRef.current) {
-          onGestureDetectedRef.current(null);
-        }
-      }
-    };
-
-    const initHands = async () => {
-      try {
-        const hands = createMediaPipeHandsInstance(handleResults);
-        if (typeof hands.initialize === 'function') {
-          try {
-            await hands.initialize();
-          } catch (initErr) {
-            console.warn('[HandWorker] MediaPipe initialize non-fatal warning:', initErr);
-          }
-        }
-        if (isMounted) {
-          handsInstanceRef.current = hands;
-          isReadyRef.current = true;
-          checkStartLoop();
-        }
-      } catch (err) {
-        console.error('[HandWorker] Failed to initialize MediaPipe Hands:', err);
-      }
-    };
-
-    initHands();
-
-    return () => {
-      isMounted = false;
-      if (animFrameIdRef.current) {
-        cancelAnimationFrame(animFrameIdRef.current);
-        animFrameIdRef.current = null;
-      }
-      if (handsInstanceRef.current) {
-        try {
-          handsInstanceRef.current.close();
-        } catch (e) {}
-        handsInstanceRef.current = null;
-      }
-      isReadyRef.current = false;
-    };
-  }, []);
-
-  // 4. Animation frame processing loop (only runs when enabled && camera active && ready)
+  // 3. Animation frame processing loop (only runs when enabled && camera active && ready)
   const checkStartLoop = useCallback(() => {
     if (animFrameIdRef.current) {
       cancelAnimationFrame(animFrameIdRef.current);
@@ -219,6 +141,82 @@ export function useHandTrackingWorker({
     animFrameIdRef.current = requestAnimationFrame(processFrame);
   }, [isEnabled, isCameraOff]);
 
+  // 4. Initialize persistent MediaPipe Hands instance lazily when enabled
+  useEffect(() => {
+    let isMounted = true;
+
+    if (!isEnabled) {
+      if (animFrameIdRef.current) {
+        cancelAnimationFrame(animFrameIdRef.current);
+        animFrameIdRef.current = null;
+      }
+      if (activeCanvasRef.current) {
+        const ctx = activeCanvasRef.current.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, activeCanvasRef.current.width, activeCanvasRef.current.height);
+        }
+      }
+      return;
+    }
+
+    const handleResults = (results) => {
+      if (!isMounted) return;
+
+      // Draw hand landmarks to registered canvas (if currently mounted and enabled)
+      const canvas = activeCanvasRef.current;
+      if (canvas && isEnabledRef.current && !isCameraOffRef.current) {
+        const video = hiddenVideoRef.current;
+        if (video && video.videoWidth && video.videoHeight) {
+          if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+          }
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            drawHandResults(ctx, results);
+          }
+        }
+      }
+
+      // Gesture classification and notification
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        const { gesture, confidence } = classifyGesture(
+          results.multiHandLandmarks[0],
+          results.multiHandedness?.[0],
+          results.multiHandLandmarks,
+          results.multiHandedness
+        );
+        if (gesture && gesture !== 'Signing...' && onGestureDetectedRef.current) {
+          onGestureDetectedRef.current({ gesture, confidence });
+        }
+      } else {
+        if (onGestureDetectedRef.current) {
+          onGestureDetectedRef.current(null);
+        }
+      }
+    };
+
+    if (!handsInstanceRef.current) {
+      try {
+        const hands = getOrCreateMediaPipeHands(handleResults);
+        handsInstanceRef.current = hands;
+        isReadyRef.current = true;
+      } catch (err) {
+        console.error('[HandWorker] Failed to obtain MediaPipe Hands:', err);
+      }
+    } else {
+      setMediaPipeResultsCallback(handleResults);
+      isReadyRef.current = true;
+    }
+
+    checkStartLoop();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isEnabled, checkStartLoop]);
+
+  // 5. Trigger loop restart when isEnabled or isCameraOff changes
   useEffect(() => {
     checkStartLoop();
     return () => {
@@ -228,6 +226,19 @@ export function useHandTrackingWorker({
       }
     };
   }, [checkStartLoop]);
+
+  // 6. Cleanup on component unmount
+  useEffect(() => {
+    return () => {
+      if (animFrameIdRef.current) {
+        cancelAnimationFrame(animFrameIdRef.current);
+        animFrameIdRef.current = null;
+      }
+      setMediaPipeResultsCallback(null);
+      handsInstanceRef.current = null;
+      isReadyRef.current = false;
+    };
+  }, []);
 
   // 5. Canvas Registration: called by MeetingVideoTile when mounted or layout changes
   const registerCanvas = useCallback((canvasEl) => {

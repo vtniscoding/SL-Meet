@@ -1,15 +1,17 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useLocalMedia } from '../hooks/useLocalMedia';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import { useWebRTC } from '../hooks/useWebRTC';
 import { useScreenShare } from '../hooks/useScreenShare';
 import { useAslAggregator } from '../hooks/useAslAggregator';
 import { useHandTrackingWorker } from '../hooks/useHandTrackingWorker';
+import { useSpeechToText } from '../hooks/useSpeechToText';
 import { downloadMeetingTranscript } from '../utils/exportTranscript';
 import MeetingLayoutEngine from './room/MeetingLayoutEngine';
 import MeetingControlBar from './room/MeetingControlBar';
 import MeetingChatDrawer from './room/MeetingChatDrawer';
 import MeetingParticipantsDrawer from './room/MeetingParticipantsDrawer';
+import RolePromptModal from './room/RolePromptModal';
+import { ROLES } from '../constants/roles';
 
 /**
  * Top-Level Room Layout Container Component
@@ -17,10 +19,18 @@ import MeetingParticipantsDrawer from './room/MeetingParticipantsDrawer';
 export default function RoomView({
   roomId,
   onLeaveRoom,
-  mediaState: externalMediaState,
+  mediaState,
   userName = 'You',
   currentUser = null,
+  initialRole = ROLES.NON_SIGNER,
 }) {
+  // Participant Communication Role State ('signer' | 'non_signer')
+  const [userRole, setUserRole] = useState(() => initialRole || ROLES.NON_SIGNER);
+  const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
+  const [isSttEnabled, setIsSttEnabled] = useState(false);
+  const [speechLogs, setSpeechLogs] = useState([]);
+  const [localSpeechCaptions, setLocalSpeechCaptions] = useState({});
+
   // Real-Time ASL Sentence Aggregator Hook (Buffers raw gestures into fluent sentences with auto-clearing)
   const { currentSentence, transcriptLogs, pushGesture, notifyHandReset } = useAslAggregator(
     2800,
@@ -30,8 +40,7 @@ export default function RoomView({
     1800
   );
 
-  // Modular Local Media Stream & VAD Hook
-  const internalMediaState = useLocalMedia();
+  // Destructure hardware media from parent App lifecycle (Prevents duplicate getUserMedia)
   const {
     videoRef,
     localStream,
@@ -42,7 +51,7 @@ export default function RoomView({
     muteMic,
     toggleCamera,
     stopMedia,
-  } = externalMediaState || internalMediaState;
+  } = mediaState || {};
 
   // Screen Sharing Hook
   const { isScreenSharing, screenStream, toggleScreenShare, stopScreenShare } = useScreenShare();
@@ -60,6 +69,7 @@ export default function RoomView({
     presentingUsers,
     peerMediaStatus,
     chatMessages,
+    speechCaptions,
     toggleConnection,
     joinRoom,
     leaveRoom,
@@ -69,18 +79,149 @@ export default function RoomView({
     sendChatMessage,
     sendMutePeer,
     sendKickPeer,
+    changeRole,
+    sendSpeechCaption,
   } = useSocket();
 
   // WebRTC Real-Time P2P Video/Audio Streaming Hook
   const { peerStreams, peerScreenStreams } = useWebRTC(roomId, localStream, screenStream, presentingUsers);
 
+  // Signer's Speech-to-Text Pipeline: captures incoming audio from remote speakers
+  // Or fallbacks to local microphone if alone in room (single user testing)
+  const sttAudioStream = useMemo(() => {
+    if (userRole !== ROLES.SIGNER || !isSttEnabled) return null;
+    const audioTracks = [];
+    Object.entries(peerStreams).forEach(([peerId, stream]) => {
+      if (stream) {
+        stream.getAudioTracks().forEach((track) => {
+          if (track.readyState === 'live') {
+            audioTracks.push(track);
+          }
+        });
+      }
+    });
+    if (audioTracks.length > 0) {
+      return new MediaStream(audioTracks);
+    }
+    // Fallback to local mic only if completely alone in room (single user testing)
+    const hasRemotePeers = Object.keys(peerStreams).length > 0;
+    if (!hasRemotePeers && localStream && !isMuted) {
+      return localStream;
+    }
+    return null;
+  }, [peerStreams, userRole, isSttEnabled, localStream, isMuted]);
+
+  const isSttActive = userRole === ROLES.SIGNER && isSttEnabled && !!sttAudioStream;
+  const {
+    status: sttStatus,
+    loadProgress: sttProgress,
+    interimText: sttInterimText,
+  } = useSpeechToText({
+    stream: sttAudioStream,
+    enabled: isSttActive,
+    onCaption: useCallback(
+      ({ text, isFinal }) => {
+        if (!text) return;
+        // Check if transcribing remote peer or local user testing alone
+        const hasRemotePeers = Object.values(peerStreams).some((s) => s && s.getAudioTracks().length > 0);
+
+        const activeSpeakerPeer =
+          roomUsers.find((u) => u.userId !== socketId && peerMediaStatus[u.userId]?.isSpeaking) ||
+          roomUsers.find((u) => u.userId !== socketId && u.role === ROLES.NON_SIGNER) ||
+          roomUsers.find((u) => u.userId !== socketId);
+
+        const speakerId = hasRemotePeers && activeSpeakerPeer ? activeSpeakerPeer.userId : 'local';
+        const speakerName = hasRemotePeers && activeSpeakerPeer ? (activeSpeakerPeer.userMeta?.name || 'Speaker') : (userName || 'You');
+
+        setLocalSpeechCaptions((prev) => ({
+          ...prev,
+          [speakerId]: {
+            text,
+            isFinal,
+            senderName: speakerName,
+            timestamp: Date.now(),
+          },
+        }));
+
+        if (isFinal) {
+          const timestamp = Date.now();
+          setSpeechLogs((prev) => [
+            ...prev,
+            {
+              id: `speech-${speakerId}-${timestamp}-${Math.random().toString(36).substr(2, 5)}`,
+              timestamp,
+              time: new Date(timestamp).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+              }),
+              sender: speakerName,
+              type: 'SPEECH',
+              text,
+            },
+          ]);
+        }
+      },
+      [roomUsers, socketId, peerMediaStatus, peerStreams, userName]
+    ),
+  });
+
+  // Unified speech captions: merges socket captions and local transcription captions
+  const combinedSpeechCaptions = useMemo(() => {
+    return {
+      ...(speechCaptions || {}),
+      ...localSpeechCaptions,
+    };
+  }, [speechCaptions, localSpeechCaptions]);
+
+  // Track finalized remote speech captions from socket for Signer role
+  const loggedSpeechCaptionsRef = useRef(new Set());
+  useEffect(() => {
+    if (speechCaptions && userRole === ROLES.SIGNER) {
+      Object.entries(speechCaptions).forEach(([senderId, cap]) => {
+        if (cap && cap.isFinal && cap.text) {
+          const capKey = `${senderId}-${cap.timestamp}-${cap.text}`;
+          if (!loggedSpeechCaptionsRef.current.has(capKey)) {
+            loggedSpeechCaptionsRef.current.add(capKey);
+            const timestamp = cap.timestamp || Date.now();
+            setSpeechLogs((prev) => [
+              ...prev,
+              {
+                id: `speech-remote-${timestamp}-${Math.random().toString(36).substr(2, 5)}`,
+                timestamp,
+                time: new Date(timestamp).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit',
+                }),
+                sender: cap.senderName || `Speaker ${senderId.slice(0, 4)}`,
+                type: 'SPEECH',
+                text: cap.text,
+              },
+            ]);
+          }
+        }
+      });
+    }
+  }, [speechCaptions, userRole]);
+
   // Meeting Room Layout Modes: 'tiled' (Auto Grid) | 'sidebar' (Thanh bên) | 'spotlight' (Tiêu điểm)
   const [layoutMode, setLayoutMode] = useState('tiled');
   const [pinnedId, setPinnedId] = useState(null);
-  const [isAiEnabled, setIsAiEnabled] = useState(false);
-  const [isHandTrackingEnabled, setIsHandTrackingEnabled] = useState(false);
+  const [isAiEnabled, setIsAiEnabled] = useState(true);
+  const [isHandTrackingEnabled, setIsHandTrackingEnabled] = useState(userRole === ROLES.SIGNER);
   const [subtitleText, setSubtitleText] = useState('AI Subtitle Standby');
   const [activeSignerId, setActiveSignerId] = useState(null);
+
+  // Sync role with initialRole if it changes or becomes available
+  useEffect(() => {
+    if (initialRole && initialRole !== userRole) {
+      setUserRole(initialRole);
+      if (initialRole === ROLES.SIGNER) {
+        setIsHandTrackingEnabled(true);
+      }
+    }
+  }, [initialRole]);
 
   // In-Call Real-Time Chat & People Drawers state (Mutually Exclusive)
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -91,7 +232,29 @@ export default function RoomView({
   const prevRemotePresenterRef = useRef(null);
   const lastMessageCountRef = useRef(0);
 
+  // Role switching callback
+  const handleChangeRole = useCallback(
+    (newRole) => {
+      setUserRole(newRole);
+      changeRole(newRole);
+      if (newRole === ROLES.NON_SIGNER) {
+        setIsHandTrackingEnabled(false);
+        setIsSttEnabled(false);
+      } else if (newRole === ROLES.SIGNER) {
+        setIsSttEnabled(false);
+        setIsHandTrackingEnabled(true);
+      }
+      setIsRoleModalOpen(false);
+    },
+    [changeRole]
+  );
+
   // Auto connect & join room socket channel
+  const userRoleRef = useRef(userRole);
+  useEffect(() => {
+    userRoleRef.current = userRole;
+  }, [userRole]);
+
   useEffect(() => {
     if (!isConnected) {
       toggleConnection();
@@ -100,6 +263,7 @@ export default function RoomView({
       name: userName || 'Participant',
       userId: currentUser?.id || null,
       isGuest: !currentUser,
+      role: userRoleRef.current,
     });
     return () => {
       leaveRoom();
@@ -211,6 +375,7 @@ export default function RoomView({
   const localCameraParticipant = {
     id: 'local',
     name: localDisplayName,
+    role: userRole,
     isLocal: true,
     isScreenSharing: false,
     isCameraOff,
@@ -225,6 +390,7 @@ export default function RoomView({
     ? {
         id: 'local-screen',
         name: userName ? `${userName} (Presentation)` : 'You (Presentation)',
+        role: userRole,
         isLocal: true,
         isScreenSharing: true,
         isCameraOff: false,
@@ -265,11 +431,13 @@ export default function RoomView({
           : false;
 
       const isPeerAiVisionActive = peerMedia.isAiVisionActive || false;
+      const peerRole = u.role || u.userMeta?.role || ROLES.NON_SIGNER;
 
       // 1. Peer Camera Tile
       remoteParticipants.push({
         id: u.userId,
         name: baseName,
+        role: peerRole,
         isLocal: false,
         isScreenSharing: false,
         isCameraOff: isPeerCameraOff,
@@ -286,6 +454,7 @@ export default function RoomView({
         remoteParticipants.push({
           id: `${u.userId}-screen`,
           name: `${baseName} (Presentation)`,
+          role: peerRole,
           isLocal: false,
           isScreenSharing: true,
           isCameraOff: false,
@@ -299,7 +468,6 @@ export default function RoomView({
     });
 
   const updatedParticipants = [
-
     ...(localPresentationParticipant ? [localPresentationParticipant] : []),
     localCameraParticipant,
     ...remoteParticipants,
@@ -332,6 +500,7 @@ export default function RoomView({
   };
 
   const handleToggleHandTracking = () => {
+    if (userRole !== ROLES.SIGNER) return;
     setIsHandTrackingEnabled((prev) => {
       const next = !prev;
       if (!next && activeSignerId === 'local') {
@@ -350,6 +519,7 @@ export default function RoomView({
 
   const handleGestureDetected = useCallback(
     (data) => {
+      if (userRole !== ROLES.SIGNER) return;
       if (data && data.gesture) {
         setActiveSignerId('local');
         pushGesture(userName || 'You', data.gesture, data.confidence);
@@ -358,20 +528,23 @@ export default function RoomView({
         notifyHandReset?.();
       }
     },
-    [sendGesture, pushGesture, userName, notifyHandReset]
+    [userRole, sendGesture, pushGesture, userName, notifyHandReset]
   );
 
   // Persistent Room-Level MediaPipe Hand Tracking Worker (Decoupled from UI video tiles)
   const { registerCanvas } = useHandTrackingWorker({
     localStream,
-    isEnabled: isHandTrackingEnabled,
+    isEnabled: isHandTrackingEnabled && userRole === ROLES.SIGNER,
     isCameraOff,
     onGestureDetected: handleGestureDetected,
   });
 
   const handleExportTranscript = useCallback(() => {
-    downloadMeetingTranscript(transcriptLogs, roomId);
-  }, [transcriptLogs, roomId]);
+    const allLogs = [...transcriptLogs, ...speechLogs].sort(
+      (a, b) => (a.timestamp || 0) - (b.timestamp || 0)
+    );
+    downloadMeetingTranscript(roomId, allLogs, chatMessages);
+  }, [transcriptLogs, speechLogs, roomId, chatMessages]);
 
   // Compute candidate signer: prioritize recent gesture sender, fallback to whoever has AI Vision ON
   const activeAiVisionPeerId = Object.keys(peerMediaStatus).find(
@@ -404,9 +577,12 @@ export default function RoomView({
             pinnedId={pinnedId}
             onTogglePin={handleTogglePin}
             isAiEnabled={isAiEnabled}
-            isHandTrackingEnabled={isHandTrackingEnabled}
+            isHandTrackingEnabled={isHandTrackingEnabled && userRole === ROLES.SIGNER}
             activeSignerId={effectiveSignerId}
             subtitleText={currentSentence}
+            speechCaptions={combinedSpeechCaptions}
+            userRole={userRole}
+            isSttActive={isSttActive}
             onRegisterCanvas={registerCanvas}
           />
         </div>
@@ -432,7 +608,6 @@ export default function RoomView({
           onKickPeer={sendKickPeer}
           currentSocketId={socketId}
         />
-
       </main>
 
       {/* Bottom Meeting Controls Bar */}
@@ -441,24 +616,38 @@ export default function RoomView({
         isCameraOff={isCameraOff}
         isScreenSharing={isScreenSharing}
         isAiEnabled={isAiEnabled}
-        isHandTrackingEnabled={isHandTrackingEnabled}
+        isHandTrackingEnabled={isHandTrackingEnabled && userRole === ROLES.SIGNER}
         isChatOpen={isChatOpen}
         isPeopleOpen={isPeopleOpen}
         unreadCount={unreadCount}
         participantCount={updatedParticipants.length}
         layoutMode={layoutMode}
         pinnedId={pinnedId}
+        userRole={userRole}
+        isSttEnabled={isSttEnabled}
+        sttStatus={sttStatus}
         onToggleMic={toggleMic}
         onToggleCamera={toggleCamera}
         onToggleScreenShare={toggleScreenShare}
         onToggleAi={handleToggleAi}
         onToggleHandTracking={handleToggleHandTracking}
+        onToggleStt={() => setIsSttEnabled((prev) => !prev)}
+        onRequestSwitchRole={() => setIsRoleModalOpen(true)}
         onToggleChat={handleToggleChat}
         onTogglePeople={handleTogglePeople}
         onChangeLayout={(mode) => setLayoutMode(mode)}
         onExportTranscript={handleExportTranscript}
         onResetPin={handleResetPin}
         onLeaveRoom={handleLeave}
+      />
+
+      {/* In-Room Role Switch Modal */}
+      <RolePromptModal
+        isOpen={isRoleModalOpen}
+        currentRole={userRole}
+        dismissible={true}
+        onSelectRole={handleChangeRole}
+        onClose={() => setIsRoleModalOpen(false)}
       />
     </div>
   );

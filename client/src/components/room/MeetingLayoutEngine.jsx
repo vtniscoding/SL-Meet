@@ -16,34 +16,51 @@ export default function MeetingLayoutEngine({
   isHandTrackingEnabled,
   activeSignerId,
   subtitleText,
+  speechCaptions = {},
+  userRole = 'non_signer',
+  isSttActive = false,
   onRegisterCanvas,
 }) {
   const pinnedParticipant = participants.find((p) => p.id === pinnedId);
   const mainParticipant = pinnedParticipant || participants.find((p) => p.isActiveSpeaker) || participants[0];
   const localParticipant = participants.find((p) => p.isLocal) || participants[0];
 
-  // Determine whether subtitle overlay should render on a given video tile
-  const shouldShowSubOnTile = (p) => {
-    if (!isAiEnabled || !p) return false;
+  // Compute caption data for each video tile (Sign Language Translation or Live Speech Caption)
+  const getTileCaptionData = (p) => {
+    if (!p) return null;
 
-    // 1. If an active signer is designated by recent gestures
-    if (activeSignerId) {
-      return p.id === activeSignerId;
-    }
-    // 2. If this participant has AI Vision turned ON
-    if (p.isAiVisionActive) {
-      return true;
-    }
-    // 3. In 2-person meeting, viewer turns on Sub -> target the other participant
-    const remotePeers = participants.filter((part) => !part.isLocal);
-    if (remotePeers.length === 1) {
-      if (isHandTrackingEnabled) {
-        return p.isLocal;
+    // 1. Live Speech Captions (for Signers reading speech of speakers or local testing)
+    if (speechCaptions) {
+      const cap = speechCaptions[p.id] || (p.isLocal ? speechCaptions['local'] : null);
+      if (cap && cap.text) {
+        const ageMs = Date.now() - (cap.timestamp || 0);
+        if (ageMs < 5000) {
+          return {
+            text: cap.text,
+            variant: 'speech',
+            title: 'LIVE CAPTION',
+          };
+        }
       }
-      return remotePeers[0].id === p.id;
     }
-    // 4. Fallback: show on local if local is the active user
-    return p.isLocal;
+
+    // 2. Sign Language Translation Subtitle on designated signer's tile (when SL is enabled)
+    if (isAiEnabled && subtitleText) {
+      const isSignerTile =
+        p.id === activeSignerId ||
+        p.isAiVisionActive ||
+        (isHandTrackingEnabled && p.isLocal);
+
+      if (isSignerTile) {
+        return {
+          text: subtitleText,
+          variant: 'asl',
+          title: 'TRANSLATION',
+        };
+      }
+    }
+
+    return null;
   };
 
   if (!participants || participants.length === 0 || !mainParticipant) {
@@ -72,9 +89,8 @@ export default function MeetingLayoutEngine({
             localStream={mainParticipant.isLocal ? localStream : null}
             isPinned={pinnedId === mainParticipant.id}
             onTogglePin={onTogglePin}
-            isAiEnabled={shouldShowSubOnTile(mainParticipant)}
+            captionData={getTileCaptionData(mainParticipant)}
             isHandTrackingEnabled={mainParticipant.isLocal ? isHandTrackingEnabled : false}
-            subtitleText={subtitleText}
             onRegisterCanvas={onRegisterCanvas}
           />
         </div>
@@ -88,9 +104,8 @@ export default function MeetingLayoutEngine({
               localStream={floatingParticipant.isLocal ? localStream : null}
               isPinned={pinnedId === floatingParticipant.id}
               onTogglePin={onTogglePin}
-              isAiEnabled={shouldShowSubOnTile(floatingParticipant)}
+              captionData={getTileCaptionData(floatingParticipant)}
               isHandTrackingEnabled={floatingParticipant.isLocal ? isHandTrackingEnabled : false}
-              subtitleText={subtitleText}
               onRegisterCanvas={onRegisterCanvas}
             />
           </div>
@@ -117,9 +132,8 @@ export default function MeetingLayoutEngine({
               localStream={mainParticipant.isLocal ? localStream : null}
               isPinned={pinnedId === mainParticipant.id}
               onTogglePin={onTogglePin}
-              isAiEnabled={shouldShowSubOnTile(mainParticipant)}
+              captionData={getTileCaptionData(mainParticipant)}
               isHandTrackingEnabled={mainParticipant.isLocal ? isHandTrackingEnabled : false}
-              subtitleText={subtitleText}
               onRegisterCanvas={onRegisterCanvas}
             />
           </div>
@@ -138,9 +152,8 @@ export default function MeetingLayoutEngine({
                 localStream={p.isLocal ? localStream : null}
                 isPinned={pinnedId === p.id}
                 onTogglePin={onTogglePin}
-                isAiEnabled={shouldShowSubOnTile(p)}
+                captionData={getTileCaptionData(p)}
                 isHandTrackingEnabled={p.isLocal ? isHandTrackingEnabled : false}
-                subtitleText={subtitleText}
                 onRegisterCanvas={onRegisterCanvas}
               />
             </div>
@@ -189,9 +202,8 @@ export default function MeetingLayoutEngine({
               localStream={p.isLocal ? localStream : null}
               isPinned={pinnedId === p.id}
               onTogglePin={onTogglePin}
-              isAiEnabled={shouldShowSubOnTile(p)}
+              captionData={getTileCaptionData(p)}
               isHandTrackingEnabled={p.isLocal ? isHandTrackingEnabled : false}
-              subtitleText={subtitleText}
               onRegisterCanvas={onRegisterCanvas}
             />
           </div>

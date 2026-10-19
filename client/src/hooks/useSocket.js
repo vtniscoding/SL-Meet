@@ -15,6 +15,7 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
   const [chatMessages, setChatMessages] = useState([]);
   const [hostId, setHostId] = useState(null);
   const [peerMediaStatus, setPeerMediaStatus] = useState({});
+  const [speechCaptions, setSpeechCaptions] = useState({});
 
   const addLog = useCallback((message, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
@@ -37,6 +38,7 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
       setPresentingUsers({});
       setChatMessages([]);
       setPeerMediaStatus({});
+      setSpeechCaptions({});
       setHostId(null);
       addLog(`Disconnected from socket service: ${reason}`, 'warning');
     };
@@ -49,6 +51,38 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
     const onGestureStream = (data) => {
       addLog(`Received gesture from ${data.senderId.slice(0, 5)}: ${data.gesture}`, 'gesture');
       setRemoteGestures((prev) => [{ ...data, id: Date.now() }, ...prev.slice(0, 19)]);
+    };
+
+    const onSpeechCaptionStream = (data) => {
+      if (data && data.senderId) {
+        setSpeechCaptions((prev) => ({
+          ...prev,
+          [data.senderId]: {
+            text: data.text,
+            isFinal: !!data.isFinal,
+            senderName: data.senderName,
+            timestamp: data.timestamp || Date.now(),
+          },
+        }));
+      }
+    };
+
+    const onPeerRoleChanged = (data) => {
+      if (data && data.userId) {
+        addLog(`Participant ${data.userId.slice(0, 5)} changed role to ${data.role}`, 'info');
+        setRoomUsers((prev) =>
+          prev.map((u) => {
+            if (u.userId === data.userId) {
+              return {
+                ...u,
+                role: data.role,
+                userMeta: { ...(u.userMeta || {}), role: data.role },
+              };
+            }
+            return u;
+          })
+        );
+      }
     };
 
     const onRoomUsers = (data) => {
@@ -97,7 +131,7 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
       const userName = data.userMeta?.name || `Participant ${data.userId.slice(0, 4)}`;
       setRoomUsers((prev) => {
         if (prev.some((u) => u.userId === data.userId)) return prev;
-        return [...prev, { userId: data.userId, userMeta: data.userMeta }];
+        return [...prev, { userId: data.userId, role: data.role || data.userMeta?.role || 'non_signer', userMeta: data.userMeta }];
       });
       setChatMessages((prev) => [
         ...prev,
@@ -125,6 +159,11 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
         return next;
       });
       setPeerMediaStatus((prev) => {
+        const next = { ...prev };
+        delete next[data.userId];
+        return next;
+      });
+      setSpeechCaptions((prev) => {
         const next = { ...prev };
         delete next[data.userId];
         return next;
@@ -187,6 +226,8 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
     socket.on('disconnect', onDisconnect);
     socket.on('connect_error', onConnectError);
     socket.on('gesture_stream', onGestureStream);
+    socket.on('speech_caption_stream', onSpeechCaptionStream);
+    socket.on('peer_role_changed', onPeerRoleChanged);
     socket.on('room_users', onRoomUsers);
     socket.on('user_joined', onUserJoined);
     socket.on('user_left', onUserLeft);
@@ -202,6 +243,8 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
       socket.off('disconnect', onDisconnect);
       socket.off('connect_error', onConnectError);
       socket.off('gesture_stream', onGestureStream);
+      socket.off('speech_caption_stream', onSpeechCaptionStream);
+      socket.off('peer_role_changed', onPeerRoleChanged);
       socket.off('room_users', onRoomUsers);
       socket.off('user_joined', onUserJoined);
       socket.off('user_left', onUserLeft);
@@ -310,6 +353,25 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
     }
   };
 
+  const changeRole = (role) => {
+    const socket = getSocket(serverUrl);
+    if (socket.connected && currentRoom && role) {
+      socket.emit('change_role', { roomId: currentRoom, role });
+      addLog(`Requested role change to ${role}`, 'info');
+    }
+  };
+
+  const sendSpeechCaption = (text, isFinal = false) => {
+    const socket = getSocket(serverUrl);
+    if (socket.connected && currentRoom && text && text.trim().length > 0) {
+      socket.emit('speech_caption', {
+        roomId: currentRoom,
+        text: text.trim(),
+        isFinal: !!isFinal,
+      });
+    }
+  };
+
   const isHost = !!(socketId && hostId && socketId === hostId);
 
   return {
@@ -326,6 +388,7 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
     presentingUsers,
     peerMediaStatus,
     chatMessages,
+    speechCaptions,
     toggleConnection,
     joinRoom,
     leaveRoom,
@@ -335,6 +398,8 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
     sendChatMessage,
     sendMutePeer,
     sendKickPeer,
+    changeRole,
+    sendSpeechCaption,
   };
 }
 

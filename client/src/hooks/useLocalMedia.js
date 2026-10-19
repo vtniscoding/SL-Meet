@@ -197,26 +197,27 @@ export function useLocalMedia() {
 
   // Toggle Microphone (Audio track mute/unmute)
   const toggleMic = useCallback(() => {
-    if (localStreamRef.current || localStream) {
+    setIsMuted((prevMuted) => {
+      const nextMuted = !prevMuted;
       const stream = localStreamRef.current || localStream;
-      const audioTracks = stream.getAudioTracks();
-      audioTracks.forEach((track) => {
-        track.enabled = !track.enabled;
-      });
-      setIsMuted((prev) => !prev);
-    }
+      if (stream) {
+        stream.getAudioTracks().forEach((track) => {
+          track.enabled = !nextMuted;
+        });
+      }
+      return nextMuted;
+    });
   }, [localStream]);
 
   // Explicitly Mute Microphone (Force mute audio tracks)
   const muteMic = useCallback(() => {
-    if (localStreamRef.current || localStream) {
-      const stream = localStreamRef.current || localStream;
-      const audioTracks = stream.getAudioTracks();
-      audioTracks.forEach((track) => {
+    const stream = localStreamRef.current || localStream;
+    if (stream) {
+      stream.getAudioTracks().forEach((track) => {
         track.enabled = false;
       });
-      setIsMuted(true);
     }
+    setIsMuted(true);
   }, [localStream]);
 
   // Toggle Camera (Video track on/off)

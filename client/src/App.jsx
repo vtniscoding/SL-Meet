@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import RoomView from './components/RoomView';
+import ErrorBoundary from './components/common/ErrorBoundary';
 import WaitingLobby from './components/room/WaitingLobby';
 import AdminGestureStudio from './components/admin/AdminGestureStudio';
 import UserDashboard from './components/dashboard/UserDashboard';
@@ -10,6 +11,8 @@ import { useSocket } from './hooks/useSocket';
 import { useAuth } from './context/AuthContext';
 import { supabase } from './utils/supabase';
 import { fetchDatasetFromServer, initRealtimeDatasetSync } from './services/gestureClassifier';
+import { preloadMediaPipeHands } from './services/mediapipe';
+import { preloadWhisperModel } from './services/whisperWorkerManager';
 import { brandLogo, homeIllustration } from './assets';
 
 export default function App() {
@@ -20,9 +23,37 @@ export default function App() {
   const [codeError, setCodeError] = useState('');
   const [isCheckingCode, setIsCheckingCode] = useState(false);
   const [userDisplayName, setUserDisplayName] = useState('');
+  const [userRole, setUserRole] = useState(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState('login');
   const [isAdminRoute, setIsAdminRoute] = useState(window.location.hash === '#admin');
+  const [isPreloading, setIsPreloading] = useState(true);
+
+  // Preload local MediaPipe WASM and Whisper speech model once at startup
+  useEffect(() => {
+    let isCancelled = false;
+
+    const preloadAssets = async () => {
+      try {
+        await Promise.allSettled([
+          preloadMediaPipeHands(),
+          preloadWhisperModel(),
+        ]);
+      } catch (err) {
+        console.warn('[Preload] Non-fatal asset preload warning:', err);
+      } finally {
+        if (!isCancelled) {
+          setIsPreloading(false);
+        }
+      }
+    };
+
+    preloadAssets();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
 
   const { user, profile, signOut } = useAuth();
 
@@ -181,9 +212,12 @@ export default function App() {
     setActiveRoomId('');
   };
 
-  const handleEnterMeetingFromLobby = (chosenName) => {
+  const handleEnterMeetingFromLobby = (chosenName, chosenRole) => {
     if (chosenName) {
       setUserDisplayName(chosenName);
+    }
+    if (chosenRole) {
+      setUserRole(chosenRole);
     }
     setCurrentView('room');
     if (!isConnected) {
@@ -193,14 +227,25 @@ export default function App() {
 
   const handleLeaveRoom = () => {
     leaveRoom();
+    setUserRole(null);
     setCurrentView(user ? 'dashboard' : 'home');
     setActiveRoomId('');
   };
 
   const handleBackHomeFromLobby = () => {
+    setUserRole(null);
     setCurrentView(user ? 'dashboard' : 'home');
     setActiveRoomId('');
   };
+
+  // Render simple minimal loading spinner during initial offline preload
+  if (isPreloading) {
+    return (
+      <div className="w-screen h-screen bg-[#121212] flex items-center justify-center select-none">
+        <Loader2 className="w-8 h-8 text-[#5CA0F2] animate-spin" />
+      </div>
+    );
+  }
 
   // Render Isolated Admin Gesture Studio Portal (Accessed exclusively via /#admin)
   if (isAdminRoute) {
@@ -241,16 +286,19 @@ export default function App() {
     );
   }
 
-  // Render Room View
+  // Render Room View with ErrorBoundary protection
   if (currentView === 'room') {
     return (
-      <RoomView
-        roomId={activeRoomId}
-        onLeaveRoom={handleLeaveRoom}
-        mediaState={mediaState}
-        userName={userDisplayName || (user ? user.email?.split('@')[0] : 'Participant')}
-        currentUser={user}
-      />
+      <ErrorBoundary onReset={handleLeaveRoom}>
+        <RoomView
+          roomId={activeRoomId}
+          onLeaveRoom={handleLeaveRoom}
+          mediaState={mediaState}
+          userName={userDisplayName || (user ? user.email?.split('@')[0] : 'Participant')}
+          currentUser={user}
+          initialRole={userRole}
+        />
+      </ErrorBoundary>
     );
   }
 

@@ -14,27 +14,104 @@ import {
 
 export { loadCustomDataset, getDatasetSummary, exportCurrentDataset };
 
+let globalHandsInstance = null;
+let currentResultsCallback = null;
+let initPromise = null;
+
 /**
- * Initializes and configures MediaPipe Hands solution instance
+ * Preload and warm up MediaPipe Hands WASM compiler and graph during app startup
+ */
+export async function preloadMediaPipeHands() {
+  if (globalHandsInstance) return globalHandsInstance;
+  if (initPromise) return initPromise;
+
+  initPromise = (async () => {
+    try {
+      const hands = new Hands({
+        locateFile: (file) => {
+          return new URL(`./mediapipe/hands/${file}`, window.location.href).href;
+        },
+      });
+
+      hands.setOptions({
+        maxNumHands: 2,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.7,
+        minTrackingConfidence: 0.7,
+      });
+
+      hands.onResults((results) => {
+        if (typeof currentResultsCallback === 'function') {
+          currentResultsCallback(results);
+        }
+      });
+
+      // Warm up MediaPipe WASM and ML graph execution upfront
+      if (typeof hands.initialize === 'function') {
+        await hands.initialize();
+      }
+
+      globalHandsInstance = hands;
+      return hands;
+    } catch (err) {
+      console.warn('[MediaPipe] Preload initialization warning:', err);
+      return null;
+    } finally {
+      initPromise = null;
+    }
+  })();
+
+  return initPromise;
+}
+
+/**
+ * Dynamically attach/detach results listener to the persistent MediaPipe singleton
+ */
+export function setMediaPipeResultsCallback(callback) {
+  currentResultsCallback = callback;
+}
+
+/**
+ * Returns the persistent MediaPipe Hands singleton, initializing if needed
+ */
+export function getOrCreateMediaPipeHands(onResultsCallback) {
+  if (onResultsCallback) {
+    currentResultsCallback = onResultsCallback;
+  }
+
+  if (!globalHandsInstance) {
+    const hands = new Hands({
+      locateFile: (file) => {
+        return new URL(`./mediapipe/hands/${file}`, window.location.href).href;
+      },
+    });
+
+    hands.setOptions({
+      maxNumHands: 2,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.7,
+    });
+
+    hands.onResults((results) => {
+      if (typeof currentResultsCallback === 'function') {
+        currentResultsCallback(results);
+      }
+    });
+
+    globalHandsInstance = hands;
+  }
+
+  return globalHandsInstance;
+}
+
+/**
+ * Legacy wrapper: Returns the persistent MediaPipe Hands instance
  * @param {Function} onResultsCallback - Handler for landmark results
  * @returns {Hands} Configured MediaPipe Hands instance
  */
 export function createMediaPipeHandsInstance(onResultsCallback) {
-  const hands = new Hands({
-    locateFile: (file) => {
-      return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-    },
-  });
-
-  hands.setOptions({
-    maxNumHands: 2,
-    modelComplexity: 1,
-    minDetectionConfidence: 0.7,
-    minTrackingConfidence: 0.7,
-  });
-
-  hands.onResults(onResultsCallback);
-  return hands;
+  return getOrCreateMediaPipeHands(onResultsCallback);
 }
 
 /**

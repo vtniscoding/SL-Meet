@@ -15,6 +15,7 @@ export default function MeetingVideoTile({
   isAiEnabled,
   isHandTrackingEnabled = true,
   subtitleText,
+  captionData,
   onRegisterCanvas,
 }) {
   const { id, name, isLocal, isCameraOff, isMuted, isSpeaking, isActiveSpeaker, isScreenSharing, stream: tileStream, hasStream } = participant;
@@ -26,18 +27,19 @@ export default function MeetingVideoTile({
     activeStream &&
     activeStream.getVideoTracks().some((t) => t.enabled && t.readyState === 'live');
 
-  // Attach stream to video element cleanly and force video play
+  // Attach stream to video element cleanly, ensure audio mute state is applied, and force video play
   useEffect(() => {
     const videoEl = tileVideoRef.current;
-    if (videoEl && activeStream) {
-      if (videoEl.srcObject !== activeStream) {
+    if (videoEl) {
+      videoEl.muted = isLocal || isScreenSharing || (!isLocal && isMuted);
+      if (activeStream && videoEl.srcObject !== activeStream) {
         videoEl.srcObject = activeStream;
       }
       videoEl.play().catch((err) => {
         // Video autoplay deferred until metadata or user gesture
       });
     }
-  }, [activeStream, isCameraOff, isScreenSharing, hasLiveVideo]);
+  }, [activeStream, isCameraOff, isScreenSharing, hasLiveVideo, isLocal, isMuted]);
 
   // Sync external videoRef for MediaPipe hand tracking if this is local camera tile
   useEffect(() => {
@@ -73,7 +75,7 @@ export default function MeetingVideoTile({
         ref={tileVideoRef}
         autoPlay
         playsInline
-        muted={isLocal || isScreenSharing}
+        muted={isLocal || isScreenSharing || (!isLocal && isMuted)}
         onLoadedMetadata={(e) => {
           e.target.play().catch(() => {});
         }}
@@ -139,10 +141,15 @@ export default function MeetingVideoTile({
         </button>
       </div>
 
-      {/* Floating ASL Subtitle Overlay (Renders on designated signer tile whenever viewer enables AI CC) */}
-      {isAiEnabled && subtitleText && (
-        <AslSubtitleOverlay subtitleText={subtitleText} />
-      )}
+      {/* Floating Subtitle / Caption Overlay */}
+      {captionData && captionData.text ? (
+        <AslSubtitleOverlay
+          subtitleText={captionData.text}
+          title={captionData.title || (captionData.variant === 'speech' ? 'LIVE CAPTION' : 'TRANSLATION')}
+        />
+      ) : isAiEnabled && subtitleText ? (
+        <AslSubtitleOverlay subtitleText={subtitleText} title="TRANSLATION" />
+      ) : null}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Search, Users, Mic, MicOff, Video, VideoOff, Monitor, Pin, PinOff, UserX, Shield } from 'lucide-react';
+import { X, Search, Users, Mic, MicOff, Video, VideoOff, Monitor, Pin, PinOff, UserX, Shield, Hand } from 'lucide-react';
 
 /**
  * In-Meeting Real-time Participants List & Moderation Drawer Component
@@ -135,6 +135,17 @@ export default function MeetingParticipantsDrawer({
                       {isParticipantHost && (
                         <span className="text-[10px] bg-blue-900/60 text-blue-300 border border-blue-700/50 px-1.5 py-0.2 rounded font-semibold shrink-0">
                           Host
+                        </span>
+                      )}
+                      {p.role === 'signer' ? (
+                        <span className="text-[10px] bg-blue-500/20 text-blue-300 border border-blue-500/30 px-1.5 py-0.5 rounded font-semibold flex items-center space-x-1 shrink-0">
+                          <Hand className="w-2.5 h-2.5" />
+                          <span>Signer</span>
+                        </span>
+                      ) : (
+                        <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded font-semibold flex items-center space-x-1 shrink-0">
+                          <Mic className="w-2.5 h-2.5" />
+                          <span>Speaker</span>
                         </span>
                       )}
                     </div>

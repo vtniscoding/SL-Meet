@@ -1,5 +1,25 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Captions, Eye, EyeOff, Monitor, Grid, Columns, Maximize2, PinOff, MoreVertical, Check, MessageSquare, Users, Download } from 'lucide-react';
+import {
+  Mic,
+  MicOff,
+  Video,
+  VideoOff,
+  PhoneOff,
+  Captions,
+  Eye,
+  EyeOff,
+  Monitor,
+  Grid,
+  Columns,
+  Maximize2,
+  PinOff,
+  MoreVertical,
+  Check,
+  MessageSquare,
+  Users,
+  Download,
+  UserCheck,
+} from 'lucide-react';
 
 /**
  * Semantic Component: Google Meet Style Control Bar
@@ -17,11 +37,16 @@ export default function MeetingControlBar({
   participantCount = 1,
   layoutMode,
   pinnedId,
+  userRole = 'non_signer',
+  isSttEnabled = false,
+  sttStatus = 'idle',
   onToggleMic,
   onToggleCamera,
   onToggleScreenShare,
   onToggleAi,
   onToggleHandTracking,
+  onToggleStt,
+  onRequestSwitchRole,
   onToggleChat,
   onTogglePeople,
   onChangeLayout,
@@ -110,7 +135,7 @@ export default function MeetingControlBar({
           <Monitor className="w-5 h-5" />
         </button>
 
-        {/* AI CC Subtitle Toggle Button */}
+        {/* SL (Sign Language Translation) Toggle Button (Universal: Signers & Non-Signers) */}
         <button
           onClick={onToggleAi}
           className={`px-4 h-12 rounded-full text-xs font-bold flex items-center space-x-2 transition-colors outline-none focus:outline-none focus:ring-0 ${
@@ -118,24 +143,58 @@ export default function MeetingControlBar({
               ? 'bg-[#8AB4F8] text-[#202124]'
               : 'bg-[#3C4043] hover:bg-[#474B4F] text-slate-300'
           }`}
-          title={isAiEnabled ? 'Turn OFF ASL AI Subtitles' : 'Turn ON ASL AI Subtitles'}
+          title={isAiEnabled ? 'Turn OFF SL Subtitles' : 'Turn ON SL Subtitles'}
         >
           <Captions className="w-5 h-5" />
-          <span>AI CC</span>
+          <span>SL</span>
         </button>
 
-        {/* Hand Tracking Toggle Button */}
-        <button
-          onClick={onToggleHandTracking}
-          className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors outline-none focus:outline-none focus:ring-0 ${
-            isHandTrackingEnabled
-              ? 'bg-[#8AB4F8] text-[#202124]'
-              : 'bg-[#3C4043] hover:bg-[#474B4F] text-slate-300'
-          }`}
-          title={isHandTrackingEnabled ? 'Turn OFF AI Vision Tracking' : 'Turn ON AI Vision Tracking'}
-        >
-          {isHandTrackingEnabled ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
-        </button>
+        {/* Hand Tracking AI Vision Toggle Button (Signers only) */}
+        {userRole === 'signer' && (
+          <button
+            onClick={onToggleHandTracking}
+            className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors outline-none focus:outline-none focus:ring-0 ${
+              isHandTrackingEnabled
+                ? 'bg-[#8AB4F8] text-[#202124]'
+                : 'bg-[#3C4043] hover:bg-[#474B4F] text-slate-300'
+            }`}
+            title={isHandTrackingEnabled ? 'Turn OFF AI Vision Tracking' : 'Turn ON AI Vision Tracking'}
+          >
+            {isHandTrackingEnabled ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
+          </button>
+        )}
+
+        {/* Live Speech-to-Text Captions Toggle Button (Signers only) */}
+        {userRole === 'signer' && (
+          <button
+            onClick={onToggleStt}
+            className={`px-4 h-12 rounded-full text-xs font-bold flex items-center space-x-2 transition-colors outline-none focus:outline-none focus:ring-0 ${
+              isSttEnabled
+                ? 'bg-[#8AB4F8] text-[#202124]'
+                : 'bg-[#3C4043] hover:bg-[#474B4F] text-slate-300'
+            }`}
+            title={
+              sttStatus === 'loading'
+                ? 'Loading Whisper AI model...'
+                : isSttEnabled
+                ? 'Turn OFF Live Voice Captions'
+                : 'Turn ON Live Voice Captions'
+            }
+          >
+            {sttStatus === 'loading' ? (
+              <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Captions className="w-5 h-5" />
+            )}
+            <span>
+              {sttStatus === 'loading'
+                ? 'Loading...'
+                : isSttEnabled
+                ? 'Captions ON'
+                : 'Captions'}
+            </span>
+          </button>
+        )}
 
         {/* Red End Call / Leave Room Button */}
         <button
@@ -234,8 +293,21 @@ export default function MeetingControlBar({
                   {layoutMode === 'spotlight' && <Check className="w-4 h-4 text-blue-400" />}
                 </button>
 
-                <div className="border-t border-slate-700/50 my-1 pt-1">
-                  {/* Option 4: Export Transcript */}
+                <div className="border-t border-slate-700/50 my-1 pt-1 space-y-1">
+                  {/* Option 4: Switch Role */}
+                  <button
+                    onClick={() => {
+                      if (onRequestSwitchRole) onRequestSwitchRole();
+                      setShowMoreMenu(false);
+                    }}
+                    className="w-full px-3 py-2 rounded-xl flex items-center space-x-3 hover:bg-[#35373A] text-slate-300 transition-colors outline-none focus:outline-none"
+                    title="Change your communication role"
+                  >
+                    <UserCheck className="w-4 h-4 text-emerald-400" />
+                    <span>Switch Role ({userRole === 'signer' ? 'Signer' : 'Speaker'})</span>
+                  </button>
+
+                  {/* Option 5: Export Transcript */}
                   <button
                     onClick={() => {
                       if (onExportTranscript) onExportTranscript();

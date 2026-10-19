@@ -1,6 +1,8 @@
-import React, { useEffect } from 'react';
-import { Mic, MicOff, Video, VideoOff, User, Camera, Volume2, ArrowLeft } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Mic, MicOff, Video, VideoOff, User, Camera, Volume2, ArrowLeft, Hand } from 'lucide-react';
 import { brandLogo } from '../../assets';
+import RolePromptModal from './RolePromptModal';
+import { ROLES, ROLE_META } from '../../constants/roles';
 
 /**
  * Semantic Component: Google Meet Style Waiting Lobby
@@ -14,8 +16,10 @@ export default function WaitingLobby({
   initialDisplayName = '',
   isAuthenticated = false,
 }) {
-  const [displayName, setDisplayName] = React.useState(initialDisplayName);
-  const [nameError, setNameError] = React.useState('');
+  const [displayName, setDisplayName] = useState(initialDisplayName);
+  const [nameError, setNameError] = useState('');
+  const [selectedRole, setSelectedRole] = useState(null);
+  const [isRoleModalOpen, setIsRoleModalOpen] = useState(true);
 
   const {
     videoRef,
@@ -49,8 +53,12 @@ export default function WaitingLobby({
       setNameError('Please enter your name to join the meeting.');
       return;
     }
+    if (!selectedRole) {
+      setIsRoleModalOpen(true);
+      return;
+    }
     setNameError('');
-    onJoinMeeting(trimmed);
+    onJoinMeeting(trimmed, selectedRole);
   };
 
   // Bind localStream to video DOM element whenever Lobby mounts or stream updates
@@ -185,6 +193,42 @@ export default function WaitingLobby({
             {nameError && (
               <p className="text-[11px] text-red-500 font-medium pl-1 pt-0.5">{nameError}</p>
             )}
+
+            {/* Selected Role Chip / Re-trigger Modal */}
+            <div className="pt-2">
+              {selectedRole ? (
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-100 border border-slate-200">
+                  <div className="flex items-center space-x-2">
+                    <span className="p-1 rounded-lg bg-blue-500/10 text-[#5CA0F2]">
+                      {selectedRole === ROLES.SIGNER ? <Hand size={15} /> : <Mic size={15} />}
+                    </span>
+                    <div>
+                      <div className="text-xs font-bold text-slate-800">
+                        {ROLE_META[selectedRole]?.label}
+                      </div>
+                      <div className="text-[10px] text-slate-500">
+                        {selectedRole === ROLES.SIGNER ? 'Sign Language & Live Captions' : 'Verbal Speech'}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsRoleModalOpen(true)}
+                    className="text-[11px] font-semibold text-[#5CA0F2] hover:underline px-2 py-1"
+                  >
+                    Change
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsRoleModalOpen(true)}
+                  className="w-full text-xs text-blue-600 font-semibold p-2.5 rounded-xl border border-dashed border-blue-300 bg-blue-50/50 hover:bg-blue-50 text-center transition-colors"
+                >
+                  Click to select your communication role (Required)
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Hardware Device Configuration Options */}
@@ -252,12 +296,32 @@ export default function WaitingLobby({
           {/* Join Meeting Action Button */}
           <button
             onClick={handleJoinClick}
-            className="w-full bg-[#5CA0F2] hover:bg-[#4A8FE0] text-white font-bold text-sm py-3.5 rounded-2xl shadow-md transition-all outline-none focus:outline-none cursor-pointer"
+            className={`w-full font-bold text-sm py-3.5 rounded-2xl shadow-md transition-all outline-none focus:outline-none cursor-pointer ${
+              selectedRole
+                ? 'bg-[#5CA0F2] hover:bg-[#4A8FE0] text-white'
+                : 'bg-slate-300 text-slate-600 hover:bg-slate-400'
+            }`}
           >
-            Join now
+            {selectedRole ? 'Join now' : 'Select role to join'}
           </button>
         </div>
       </main>
+
+      {/* Mandatory Role Prompt Modal */}
+      <RolePromptModal
+        isOpen={isRoleModalOpen}
+        currentRole={selectedRole}
+        dismissible={!!selectedRole}
+        onSelectRole={(role) => {
+          setSelectedRole(role);
+          setIsRoleModalOpen(false);
+        }}
+        onClose={() => {
+          if (selectedRole) {
+            setIsRoleModalOpen(false);
+          }
+        }}
+      />
     </div>
   );
 }

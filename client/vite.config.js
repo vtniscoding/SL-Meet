@@ -11,12 +11,19 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src')
     }
   },
+  worker: {
+    format: 'es',
+  },
+  optimizeDeps: {
+    exclude: ['@huggingface/transformers'],
+  },
   server: {
     port: 5173,
     strictPort: false
   },
   build: {
     outDir: 'dist',
-    emptyOutDir: true
+    emptyOutDir: true,
+    target: 'esnext'
   }
 });

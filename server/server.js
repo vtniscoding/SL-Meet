@@ -213,6 +213,11 @@ const io = new Server(httpServer, {
   transports: ['websocket', 'polling'],
 });
 
+function sanitizeRole(role) {
+  if (role === 'signer' || role === 'non_signer') return role;
+  return 'non_signer';
+}
+
 // Store active room tracking: Map<roomId, { hostId: string, members: Map<socketId, userMeta> }>
 const rooms = new Map();
 
@@ -239,7 +244,8 @@ io.on('connection', (socket) => {
     const roomMembers = roomData.members;
     const existingParticipants = Array.from(roomMembers.entries()).map(([id, meta]) => ({
       userId: id,
-      userMeta: meta || { name: `Participant ${id.slice(0, 4)}` },
+      userMeta: meta || { name: `Participant ${id.slice(0, 4)}`, role: 'non_signer' },
+      role: meta?.role || 'non_signer',
       isPresenting: meta?.isPresenting || false,
       screenStreamId: meta?.screenStreamId || null,
       isMuted: meta?.isMuted || false,
@@ -249,6 +255,7 @@ io.on('connection', (socket) => {
     }));
 
     const clientMeta = userMeta || { name: `Participant ${socket.id.slice(0, 4)}` };
+    clientMeta.role = sanitizeRole(userMeta?.role);
     clientMeta.isPresenting = false;
     clientMeta.screenStreamId = null;
     clientMeta.isMuted = userMeta?.isMuted || false;
@@ -257,7 +264,7 @@ io.on('connection', (socket) => {
     clientMeta.isGuest = isGuest;
     roomMembers.set(socket.id, clientMeta);
 
-    console.log(`[Join Room] Client ${socket.id} joined room ${roomId} (Host: ${roomData.hostId || 'None'}) - Guest: ${isGuest}`);
+    console.log(`[Join Room] Client ${socket.id} joined room ${roomId} (Role: ${clientMeta.role}, Host: ${roomData.hostId || 'None'}) - Guest: ${isGuest}`);
 
     // Send list of existing room members & hostId to the newly joined client
     socket.emit('room_users', {
@@ -271,10 +278,30 @@ io.on('connection', (socket) => {
       userId: socket.id,
       roomId,
       hostId: roomData.hostId,
+      role: clientMeta.role,
       userMeta: clientMeta,
     });
   });
 
+  // Dynamic In-Room Role Switching
+  socket.on('change_role', ({ roomId, role }) => {
+    if (roomId && rooms.has(roomId)) {
+      const roomData = rooms.get(roomId);
+      const roomMembers = roomData.members;
+      if (roomMembers.has(socket.id)) {
+        const validRole = sanitizeRole(role);
+        const meta = roomMembers.get(socket.id);
+        meta.role = validRole;
+        roomMembers.set(socket.id, meta);
+
+        console.log(`[Role Change] User ${socket.id} in room ${roomId} changed role to ${validRole}`);
+        io.in(roomId).emit('peer_role_changed', {
+          userId: socket.id,
+          role: validRole,
+        });
+      }
+    }
+  });
 
   socket.on('leave_room', ({ roomId }) => {
     socket.leave(roomId);
@@ -298,15 +325,46 @@ io.on('connection', (socket) => {
     console.log(`[Leave Room] Client ${socket.id} left room ${roomId}`);
   });
 
-  // Real-Time Sign Language Gesture Stream
+  // Real-Time Sign Language Gesture Stream (Restricted strictly to Signer role)
   socket.on('send_gesture', ({ roomId, gesture, confidence, timestamp }) => {
-    if (roomId) {
-      socket.to(roomId).emit('gesture_stream', {
-        senderId: socket.id,
-        gesture,
-        confidence,
-        timestamp: timestamp || Date.now(),
-      });
+    if (roomId && rooms.has(roomId)) {
+      const roomData = rooms.get(roomId);
+      const meta = roomData.members?.get(socket.id);
+      if (meta && meta.role === 'signer') {
+        socket.to(roomId).emit('gesture_stream', {
+          senderId: socket.id,
+          gesture,
+          confidence,
+          timestamp: timestamp || Date.now(),
+        });
+      } else {
+        console.warn(`[Unauthorized Gesture] Client ${socket.id} with role ${meta?.role} attempted to send gesture.`);
+      }
+    }
+  });
+
+  // Real-Time Speech-to-Text Caption Stream (Restricted to Non-signer, Targeted to Signers only)
+  socket.on('speech_caption', ({ roomId, text, isFinal }) => {
+    if (roomId && rooms.has(roomId) && typeof text === 'string' && text.trim().length > 0) {
+      const roomData = rooms.get(roomId);
+      const senderMeta = roomData.members?.get(socket.id);
+      if (senderMeta && senderMeta.role === 'non_signer') {
+        const cleanText = text.trim().slice(0, 500);
+        const senderName = senderMeta.name || `Speaker ${socket.id.slice(0, 4)}`;
+
+        // Targeted emission: Only participants with role === 'signer' receive speech captions!
+        for (const [memberId, memberMeta] of roomData.members) {
+          if (memberId !== socket.id && memberMeta?.role === 'signer') {
+            io.to(memberId).emit('speech_caption_stream', {
+              senderId: socket.id,
+              senderName,
+              text: cleanText,
+              isFinal: !!isFinal,
+              timestamp: Date.now(),
+            });
+          }
+        }
+      }
     }
   });
 

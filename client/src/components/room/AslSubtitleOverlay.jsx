@@ -1,10 +1,10 @@
 import React from 'react';
 
 /**
- * Semantic Component: Centered Solid Borderless ASL Subtitle Overlay Pill
- * Features solid dark background with 75% opacity, borderless styling, and white 'TRANSLATION' header.
+ * Semantic Component: Centered Solid Borderless Subtitle Overlay Pill
+ * Features solid dark background with 80% opacity, borderless styling, and white 'TRANSLATION' header.
  */
-export default function AslSubtitleOverlay({ subtitleText = '' }) {
+export default function AslSubtitleOverlay({ subtitleText = '', title = 'TRANSLATION' }) {
   const hasText = subtitleText && typeof subtitleText === 'string' && subtitleText.trim().length > 0;
   const displayText = hasText ? subtitleText : '....';
 
@@ -13,7 +13,7 @@ export default function AslSubtitleOverlay({ subtitleText = '' }) {
       <div className="inline-flex flex-col items-center justify-center bg-black/80 backdrop-blur-md text-white px-6 sm:px-8 py-2.5 sm:py-3 rounded-2xl shadow-2xl tracking-wide text-center min-w-[200px] border border-white/10">
         {/* Top Centered Header Title: High-Contrast & Compact */}
         <div className="text-[11px] md:text-xs font-bold uppercase tracking-widest text-slate-300 mb-0.5 select-none">
-          TRANSLATION
+          {title}
         </div>
 
         {/* Centered Prominent Subtitle Output */}
