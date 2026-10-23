@@ -32,11 +32,19 @@ export function useAslAggregator(
   postPhraseCooldownMs = 1800
 ) {
   const [currentSentence, setCurrentSentence] = useState('');
+  const [liveTokens, setLiveTokens] = useState([]);
   const [transcriptLogs, setTranscriptLogs] = useState([]);
 
   const bufferRef = useRef([]);
   const windowRef = useRef([]);
   const streakRef = useRef({ token: null, count: 0 });
+
+  const syncLiveTokens = useCallback(() => {
+    const pending = phraseStateRef.current.state === 'PENDING_PHRASE'
+      ? phraseStateRef.current.tokens.map((t, idx, arr) => (idx === arr.length - 1 ? `${t}...` : t))
+      : [];
+    setLiveTokens([...bufferRef.current, ...pending]);
+  }, []);
   const lastAddedTimeRef = useRef(0);
   const lastSenderRef = useRef('You');
   const timerRef = useRef(null);
@@ -106,6 +114,7 @@ export function useAslAggregator(
     lastEmittedTokenRef.current = null;
     phraseLockUntilRef.current = 0;
     resetPhraseStateMachine();
+    setLiveTokens([]);
 
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
@@ -138,11 +147,12 @@ export function useAslAggregator(
 
       // Update current displayed sentence
       setCurrentSentence(phraseTranslation);
+      syncLiveTokens();
 
       // Start silence countdown for final commit
       scheduleSentenceCommit();
     },
-    [resetPhraseStateMachine, postPhraseCooldownMs, scheduleSentenceCommit]
+    [resetPhraseStateMachine, postPhraseCooldownMs, scheduleSentenceCommit, syncLiveTokens]
   );
 
   const notifyHandReset = useCallback(() => {
@@ -287,6 +297,7 @@ export function useAslAggregator(
                 fallbackMatch: twoSignMatch,
                 timer: newTimer,
               };
+              syncLiveTokens();
 
               return;
             } else if (twoSignMatch) {
@@ -341,6 +352,7 @@ export function useAslAggregator(
           fallbackMatch: null,
           timer,
         };
+        syncLiveTokens();
 
         return;
       }
@@ -358,6 +370,7 @@ export function useAslAggregator(
 
         const formatted = formatAslSentence(currentBuffer);
         setCurrentSentence(formatted);
+        syncLiveTokens();
       }
 
       // Refresh countdown timer for sentence commitment
@@ -385,11 +398,13 @@ export function useAslAggregator(
     lastEmittedTokenRef.current = null;
     phraseLockUntilRef.current = 0;
     setCurrentSentence('');
+    setLiveTokens([]);
     setTranscriptLogs([]);
   }, [resetPhraseStateMachine]);
 
   return {
     currentSentence,
+    liveTokens,
     transcriptLogs,
     pushGesture,
     clearTranscript,

@@ -1,25 +1,25 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  Mic,
-  MicOff,
-  Video,
-  VideoOff,
-  PhoneOff,
-  Captions,
-  Eye,
-  EyeOff,
-  Monitor,
-  Grid,
-  Columns,
-  Maximize2,
-  PinOff,
-  MoreVertical,
-  Check,
-  MessageSquare,
-  Users,
-  Download,
-  UserCheck,
-} from 'lucide-react';
+  MicOnIcon as Mic,
+  MicOffIcon as MicOff,
+  CameraOnIcon as Video,
+  CameraOffIcon as VideoOff,
+  EndCallIcon as PhoneOff,
+  CaptionsIcon as Captions,
+  HandTrackingOnIcon as Eye,
+  HandTrackingOffIcon as EyeOff,
+  ScreenShareIcon as Monitor,
+  TiledLayoutIcon as Grid,
+  SidebarLayoutIcon as Columns,
+  SpotlightLayoutIcon as Maximize2,
+  UnpinIcon as PinOff,
+  MoreOptionsIcon as MoreVertical,
+  CheckmarkIcon as Check,
+  ChatDrawerIcon as MessageSquare,
+  ParticipantsDrawerIcon as Users,
+  DownloadTranscriptIcon as Download,
+  RoleAssignedIcon as UserCheck,
+} from '../../icons';
 
 /**
  * Semantic Component: Google Meet Style Control Bar
@@ -135,19 +135,21 @@ export default function MeetingControlBar({
           <Monitor className="w-5 h-5" />
         </button>
 
-        {/* SL (Sign Language Translation) Toggle Button (Universal: Signers & Non-Signers) */}
-        <button
-          onClick={onToggleAi}
-          className={`px-4 h-12 rounded-full text-xs font-bold flex items-center space-x-2 transition-colors outline-none focus:outline-none focus:ring-0 ${
-            isAiEnabled
-              ? 'bg-[#8AB4F8] text-[#202124]'
-              : 'bg-[#3C4043] hover:bg-[#474B4F] text-slate-300'
-          }`}
-          title={isAiEnabled ? 'Turn OFF SL Subtitles' : 'Turn ON SL Subtitles'}
-        >
-          <Captions className="w-5 h-5" />
-          <span>SL</span>
-        </button>
+        {/* SL (Sign Language Translation) Toggle Button (Non-Signers only) */}
+        {userRole !== 'signer' && (
+          <button
+            onClick={onToggleAi}
+            className={`px-4 h-12 rounded-full text-xs font-bold flex items-center space-x-2 transition-colors outline-none focus:outline-none focus:ring-0 ${
+              isAiEnabled
+                ? 'bg-[#8AB4F8] text-[#202124]'
+                : 'bg-[#3C4043] hover:bg-[#474B4F] text-slate-300'
+            }`}
+            title={isAiEnabled ? 'Turn OFF SL Subtitles' : 'Turn ON SL Subtitles'}
+          >
+            <Captions className="w-5 h-5" />
+            <span>SL</span>
+          </button>
+        )}
 
         {/* Hand Tracking AI Vision Toggle Button (Signers only) */}
         {userRole === 'signer' && (

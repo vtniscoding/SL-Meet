@@ -1,6 +1,6 @@
 import React from 'react';
 import MeetingVideoTile from './MeetingVideoTile';
-import { Users } from 'lucide-react';
+import { ParticipantsDrawerIcon as Users } from '../../icons';
 
 /**
  * Semantic Component: Google Meet Layout Engine (tiled, sidebar, spotlight with floating stream & max 6 sidebar slots)
@@ -25,43 +25,9 @@ export default function MeetingLayoutEngine({
   const mainParticipant = pinnedParticipant || participants.find((p) => p.isActiveSpeaker) || participants[0];
   const localParticipant = participants.find((p) => p.isLocal) || participants[0];
 
-  // Compute caption data for each video tile (Sign Language Translation or Live Speech Caption)
-  const getTileCaptionData = (p) => {
-    if (!p) return null;
-
-    // 1. Live Speech Captions (for Signers reading speech of speakers or local testing)
-    if (speechCaptions) {
-      const cap = speechCaptions[p.id] || (p.isLocal ? speechCaptions['local'] : null);
-      if (cap && cap.text) {
-        const ageMs = Date.now() - (cap.timestamp || 0);
-        if (ageMs < 5000) {
-          return {
-            text: cap.text,
-            variant: 'speech',
-            title: 'LIVE CAPTION',
-          };
-        }
-      }
-    }
-
-    // 2. Sign Language Translation Subtitle on designated signer's tile (when SL is enabled)
-    if (isAiEnabled && subtitleText) {
-      const isSignerTile =
-        p.id === activeSignerId ||
-        p.isAiVisionActive ||
-        (isHandTrackingEnabled && p.isLocal);
-
-      if (isSignerTile) {
-        return {
-          text: subtitleText,
-          variant: 'asl',
-          title: 'TRANSLATION',
-        };
-      }
-    }
-
-    return null;
-  };
+  // All captions and subtitles are unified in the CaptionDock anchored below the video stage.
+  // Returning null here prevents legacy floating overlays from obscuring participants' faces and hand gestures.
+  const getTileCaptionData = (_p) => null;
 
   if (!participants || participants.length === 0 || !mainParticipant) {
     return (
@@ -140,7 +106,10 @@ export default function MeetingLayoutEngine({
         </div>
 
         {/* Side Participants Stack (20% - 25% Width, Stacked Neatly from Top) */}
-        <div className="col-span-4 lg:col-span-3 flex flex-col gap-3.5 h-full max-h-[80vh] overflow-y-auto justify-start items-center pr-1 custom-scrollbar">
+        <div
+          style={{ maxHeight: 'calc(80vh - var(--dock-h, 0px))' }}
+          className="col-span-4 lg:col-span-3 flex flex-col gap-3.5 h-full overflow-y-auto justify-start items-center pr-1 custom-scrollbar"
+        >
           {visibleSideParticipants.map((p) => (
             <div
               key={p.id}
@@ -175,17 +144,17 @@ export default function MeetingLayoutEngine({
   const count = participants.length;
 
   let gridColsClass = 'grid-cols-1 max-w-4xl';
-  let tileMaxHeightClass = 'max-h-[75vh]';
+  let tileMaxHeightStyle = 'calc(75vh - var(--dock-h, 0px))';
 
   if (count === 2) {
     gridColsClass = 'grid-cols-2 max-w-5xl';
-    tileMaxHeightClass = 'max-h-[65vh]';
+    tileMaxHeightStyle = 'calc(65vh - var(--dock-h, 0px))';
   } else if (count >= 3 && count <= 4) {
     gridColsClass = 'grid-cols-2 max-w-6xl';
-    tileMaxHeightClass = 'max-h-[38vh]';
+    tileMaxHeightStyle = 'calc(38vh - (var(--dock-h, 0px) / 2))';
   } else if (count >= 5 && count <= 9) {
     gridColsClass = 'grid-cols-3 max-w-6xl';
-    tileMaxHeightClass = 'max-h-[36vh]';
+    tileMaxHeightStyle = 'calc(36vh - (var(--dock-h, 0px) / 3))';
   }
 
   return (
@@ -194,7 +163,8 @@ export default function MeetingLayoutEngine({
         {participants.map((p) => (
           <div
             key={p.id}
-            className={`w-full ${tileMaxHeightClass} aspect-video rounded-2xl overflow-hidden shadow-2xl mx-auto flex items-center justify-center`}
+            style={{ maxHeight: tileMaxHeightStyle }}
+            className="w-full aspect-video rounded-2xl overflow-hidden shadow-2xl mx-auto flex items-center justify-center"
           >
             <MeetingVideoTile
               participant={p}

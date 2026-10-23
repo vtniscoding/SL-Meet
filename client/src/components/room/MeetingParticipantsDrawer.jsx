@@ -1,5 +1,19 @@
 import React, { useState } from 'react';
-import { X, Search, Users, Mic, MicOff, Video, VideoOff, Monitor, Pin, PinOff, UserX, Shield, Hand } from 'lucide-react';
+import {
+  CloseIcon as X,
+  SearchIcon as Search,
+  ParticipantsDrawerIcon as Users,
+  MicOnIcon as Mic,
+  MicOffIcon as MicOff,
+  CameraOnIcon as Video,
+  CameraOffIcon as VideoOff,
+  ScreenShareIcon as Monitor,
+  PinIcon as Pin,
+  UnpinIcon as PinOff,
+  ModerationKickIcon as UserX,
+  HostShieldIcon as Shield,
+  SignGestureIcon as Hand,
+} from '../../icons';
 
 /**
  * In-Meeting Real-time Participants List & Moderation Drawer Component

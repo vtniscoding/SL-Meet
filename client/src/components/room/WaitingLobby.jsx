@@ -1,5 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { Mic, MicOff, Video, VideoOff, User, Camera, Volume2, ArrowLeft, Hand } from 'lucide-react';
+import {
+  MicOnIcon as Mic,
+  MicOffIcon as MicOff,
+  CameraOnIcon as Video,
+  CameraOffIcon as VideoOff,
+  UserAvatarIcon as User,
+  HardwareCameraIcon as Camera,
+  VolumeIcon as Volume2,
+  BackNavIcon as ArrowLeft,
+  SignGestureIcon as Hand,
+} from '../../icons';
 import { brandLogo } from '../../assets';
 import RolePromptModal from './RolePromptModal';
 import { ROLES, ROLE_META } from '../../constants/roles';

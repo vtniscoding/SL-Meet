@@ -27,14 +27,23 @@ function createWindow() {
     minHeight: 680,
     icon: iconPath,
     autoHideMenuBar: true,
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
-    backgroundColor: '#121212',
+    frame: false,
+    titleBarStyle: 'hidden',
+    backgroundColor: '#F2F4F7',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,
     },
+  });
+
+  // Track and notify renderer of window maximize / unmaximize state
+  mainWindow.on('maximize', () => {
+    mainWindow?.webContents.send('window-maximized-state', true);
+  });
+  mainWindow.on('unmaximize', () => {
+    mainWindow?.webContents.send('window-maximized-state', false);
   });
 
   if (isDev) {
@@ -95,6 +104,33 @@ app.on('window-all-closed', () => {
   }
 });
 
-// IPC Handler example for System / Desktop integrations
+// IPC Handler for System / Desktop integrations
 ipcMain.handle('app-version', () => app.getVersion());
+
+// Frameless Window Control IPC Listeners
+ipcMain.on('window-minimize', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.minimize();
+  }
+});
+
+ipcMain.on('window-maximize-toggle', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  }
+});
+
+ipcMain.on('window-close', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.close();
+  }
+});
+
+ipcMain.handle('window-is-maximized', () => {
+  return mainWindow && !mainWindow.isDestroyed() ? mainWindow.isMaximized() : false;
+});
 

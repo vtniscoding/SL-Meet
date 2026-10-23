@@ -6,10 +6,13 @@ import { useAslAggregator } from '../hooks/useAslAggregator';
 import { useHandTrackingWorker } from '../hooks/useHandTrackingWorker';
 import { useSpeechToText } from '../hooks/useSpeechToText';
 import { downloadMeetingTranscript } from '../utils/exportTranscript';
+import { useCaptionPrefs } from '../hooks/useCaptionPrefs';
 import MeetingLayoutEngine from './room/MeetingLayoutEngine';
 import MeetingControlBar from './room/MeetingControlBar';
 import MeetingChatDrawer from './room/MeetingChatDrawer';
 import MeetingParticipantsDrawer from './room/MeetingParticipantsDrawer';
+import CaptionDock from './room/captions/CaptionDock';
+import CaptionHistoryDrawer from './room/captions/CaptionHistoryDrawer';
 import RolePromptModal from './room/RolePromptModal';
 import { ROLES } from '../constants/roles';
 
@@ -31,8 +34,11 @@ export default function RoomView({
   const [speechLogs, setSpeechLogs] = useState([]);
   const [localSpeechCaptions, setLocalSpeechCaptions] = useState({});
 
+  // Caption preferences hook (persists font size, colors, opacity, token strip)
+  const { prefs: captionPrefs, updatePref: updateCaptionPref, resetPrefs: resetCaptionPrefs } = useCaptionPrefs();
+
   // Real-Time ASL Sentence Aggregator Hook (Buffers raw gestures into fluent sentences with auto-clearing)
-  const { currentSentence, transcriptLogs, pushGesture, notifyHandReset } = useAslAggregator(
+  const { currentSentence, transcriptLogs, liveTokens, pushGesture, notifyHandReset } = useAslAggregator(
     2800,
     7,
     650,
@@ -217,7 +223,6 @@ export default function RoomView({
   const [pinnedId, setPinnedId] = useState(null);
   const [isAiEnabled, setIsAiEnabled] = useState(true);
   const [isHandTrackingEnabled, setIsHandTrackingEnabled] = useState(userRole === ROLES.SIGNER);
-  const [subtitleText, setSubtitleText] = useState('AI Subtitle Standby');
   const [activeSignerId, setActiveSignerId] = useState(null);
 
   // Sync role with initialRole if it changes or becomes available
@@ -230,9 +235,10 @@ export default function RoomView({
     }
   }, [initialRole]);
 
-  // In-Call Real-Time Chat & People Drawers state (Mutually Exclusive)
+  // In-Call Real-Time Drawers state (Mutually Exclusive: Chat | People | Caption History)
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isPeopleOpen, setIsPeopleOpen] = useState(false);
+  const [isCaptionHistoryOpen, setIsCaptionHistoryOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
   const prevLocalPresentingRef = useRef(false);
@@ -362,6 +368,7 @@ export default function RoomView({
       if (next) {
         setUnreadCount(0);
         setIsPeopleOpen(false);
+        setIsCaptionHistoryOpen(false);
       }
       return next;
     });
@@ -372,10 +379,22 @@ export default function RoomView({
       const next = !prev;
       if (next) {
         setIsChatOpen(false);
+        setIsCaptionHistoryOpen(false);
       }
       return next;
     });
   };
+
+  const handleToggleCaptionHistory = useCallback(() => {
+    setIsCaptionHistoryOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        setIsChatOpen(false);
+        setIsPeopleOpen(false);
+      }
+      return next;
+    });
+  }, []);
 
   // Dynamic Participants Roster constructed from local state, socket roomUsers, and WebRTC peerStreams
   const localDisplayName = userName ? `${userName} (You)` : 'You';
@@ -561,6 +580,20 @@ export default function RoomView({
     activeSignerId ||
     (isHandTrackingEnabled ? 'local' : activeAiVisionPeerId || null);
 
+  // Active speaker names for live speaking telemetry indicators in caption dock
+  const activeSpeakingNames = useMemo(() => {
+    const names = [];
+    if (isSpeaking && !isMuted) {
+      names.push(userName || 'You');
+    }
+    roomUsers.forEach((u) => {
+      if (u.userId !== socketId && peerMediaStatus[u.userId]?.isSpeaking) {
+        names.push(u.userMeta?.name || `Participant ${u.userId.slice(0, 4)}`);
+      }
+    });
+    return names;
+  }, [isSpeaking, isMuted, userName, roomUsers, socketId, peerMediaStatus]);
+
   return (
     <div className="w-screen h-screen max-h-screen bg-[#121212] text-white flex flex-col justify-between p-3.5 sm:p-5 md:p-6 font-sans select-none overflow-hidden">
       {/* Top Header Room Info */}
@@ -586,7 +619,6 @@ export default function RoomView({
             isAiEnabled={isAiEnabled}
             isHandTrackingEnabled={isHandTrackingEnabled && userRole === ROLES.SIGNER}
             activeSignerId={effectiveSignerId}
-            subtitleText={currentSentence}
             speechCaptions={combinedSpeechCaptions}
             userRole={userRole}
             isSttActive={isSttActive}
@@ -615,7 +647,36 @@ export default function RoomView({
           onKickPeer={sendKickPeer}
           currentSocketId={socketId}
         />
+
+        {/* Real-Time In-Call Caption & Translation History Drawer */}
+        <CaptionHistoryDrawer
+          isOpen={isCaptionHistoryOpen}
+          onClose={() => setIsCaptionHistoryOpen(false)}
+          transcriptLogs={transcriptLogs}
+          speechLogs={speechLogs}
+          roomId={roomId}
+        />
       </main>
+
+      {/* Dedicated Accessible Caption & Subtitle Dock */}
+      <CaptionDock
+        role={userRole}
+        prefs={captionPrefs}
+        onPrefsChange={updateCaptionPref}
+        onResetPrefs={resetCaptionPrefs}
+        isSttEnabled={isSttEnabled}
+        isAiEnabled={isAiEnabled}
+        isHandTrackingEnabled={isHandTrackingEnabled && userRole === ROLES.SIGNER}
+        sttStatus={sttStatus}
+        sttProgress={sttProgress}
+        speechCaptions={combinedSpeechCaptions}
+        currentSentence={currentSentence}
+        liveTokens={liveTokens}
+        transcriptLogs={transcriptLogs}
+        speechLogs={speechLogs}
+        speakingNames={activeSpeakingNames}
+        onOpenHistory={handleToggleCaptionHistory}
+      />
 
       {/* Bottom Meeting Controls Bar */}
       <MeetingControlBar

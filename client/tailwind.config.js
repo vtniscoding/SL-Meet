@@ -8,12 +8,26 @@ export default {
     extend: {
       colors: {
         brand: {
-          50: '#f0f6ff',
-          100: '#e0edff',
-          500: '#3b82f6',
-          600: '#2563eb',
-          700: '#1d4ed8',
-          900: '#0f172a',
+          DEFAULT: '#5CA0F2',
+          primary: '#5CA0F2',
+          hover: '#4A8FE0',
+          active: '#3B7ECE',
+          subtle: '#EBF3FD',
+        },
+        room: {
+          bg: '#121212',
+          surface: '#202124',
+          subtle: '#28292C',
+          btn: '#3C4043',
+          'btn-hover': '#474B4F',
+          active: '#8AB4F8',
+          danger: '#EA4335',
+          'danger-hover': '#D93025',
+        },
+        dash: {
+          pill: '#E9EEF6',
+          submit: '#0B57D0',
+          'submit-hover': '#0842A0',
         },
         dark: {
           bg: '#0B0F19',

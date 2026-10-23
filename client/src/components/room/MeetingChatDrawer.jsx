@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, MessageSquare } from 'lucide-react';
+import {
+  CloseIcon as X,
+  SendIcon as Send,
+  ChatDrawerIcon as MessageSquare,
+} from '../../icons';
 
 /**
  * In-Meeting Real-time Text Chat Drawer Component

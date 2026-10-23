@@ -1,5 +1,9 @@
 import React from 'react';
-import { Hand, Mic, X } from 'lucide-react';
+import {
+  SignGestureIcon as Hand,
+  MicOnIcon as Mic,
+  CloseIcon as X,
+} from '../../icons';
 import { ROLES } from '../../constants/roles';
 
 /**

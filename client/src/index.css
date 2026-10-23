@@ -23,6 +23,13 @@
   }
 }
 
+/* Accessibility focus indicator for Caption UI controls */
+[data-caption-ui] :focus-visible,
+aside[aria-label="Caption History"] :focus-visible {
+  outline: 2px solid #8AB4F8 !important;
+  outline-offset: 2px !important;
+}
+
 /* Glassmorphism utilities */
 .glass-panel {
   background: rgba(17, 24, 39, 0.75);

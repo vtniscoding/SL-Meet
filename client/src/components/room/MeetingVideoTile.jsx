@@ -1,6 +1,10 @@
 import React, { useEffect, useRef } from 'react';
-import { User, MicOff, Pin, PinOff } from 'lucide-react';
-import AslSubtitleOverlay from './AslSubtitleOverlay';
+import {
+  UserAvatarIcon as User,
+  MicOffIcon as MicOff,
+  PinIcon as Pin,
+  UnpinIcon as PinOff,
+} from '../../icons';
 
 /**
  * Semantic Component: Renders a single 16:9 video tile with stream attachment,
@@ -140,16 +144,6 @@ export default function MeetingVideoTile({
           {isPinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
         </button>
       </div>
-
-      {/* Floating Subtitle / Caption Overlay */}
-      {captionData && captionData.text ? (
-        <AslSubtitleOverlay
-          subtitleText={captionData.text}
-          title={captionData.title || (captionData.variant === 'speech' ? 'LIVE CAPTION' : 'TRANSLATION')}
-        />
-      ) : isAiEnabled && subtitleText ? (
-        <AslSubtitleOverlay subtitleText={subtitleText} title="TRANSLATION" />
-      ) : null}
     </div>
   );
 }
