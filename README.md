@@ -113,6 +113,21 @@ npm run dev:server
 
 ---
 
+## 🎙️ Speech-to-Text (STT) Anti-Hallucination Pipeline
+
+SL-Meet features a high-fidelity, offline Speech-to-Text pipeline designed specifically for accessibility (subtitling vocal speech for `SIGNER` participants):
+
+- **Model**: `onnx-community/whisper-base.en` (INT8 Quantized, pure CPU WASM SIMD).
+- **VAD (Voice Activity Detection)**: Neural [Silero VAD](https://github.com/ricky0123/vad) running locally to reject ambient noise (fans, typing, background murmurs) before audio reaches Whisper.
+- **Hardware DSP**: WebRTC microphone constraints enabled (`echoCancellation`, `noiseSuppression`, `autoGainControl`, `channelCount: 1`).
+- **Multi-Track Mixer**: Seamlessly mixes live remote peer audio tracks into a unified 16kHz stream without physical speaker loopback.
+- **Stabilized Final Subtitles**: Operates in zero-flicker Final-only presentation mode (`ENABLE_INTERIM: false`) to avoid confusing word mutations.
+- **Structural Anti-Hallucination Guard**: Filters out repetitive n-gram loops, impossible words-per-second bursts, and YouTube subtitle artifacts.
+- **Centralized Configuration**: Fine-tune VAD sensitivity, model selection, and debug logging in [`client/src/config/sttConfig.js`](file:///d:/SL-Meet/client/src/config/sttConfig.js).
+- **Evaluation Baseline Matrix**: Acoustic testing benchmarks recorded in [`client/src/dev/BASELINE.md`](file:///d:/SL-Meet/client/src/dev/BASELINE.md).
+
+---
+
 ## 📄 License
 
 MIT License. Built for SL-Meet project setup.

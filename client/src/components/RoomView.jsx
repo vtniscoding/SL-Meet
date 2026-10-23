@@ -88,8 +88,8 @@ export default function RoomView({
 
   // Signer's Speech-to-Text Pipeline: captures incoming audio from remote speakers
   // Or fallbacks to local microphone if alone in room (single user testing)
-  const sttAudioStream = useMemo(() => {
-    if (userRole !== ROLES.SIGNER || !isSttEnabled) return null;
+  const sttTracks = useMemo(() => {
+    if (userRole !== ROLES.SIGNER || !isSttEnabled) return [];
     const audioTracks = [];
     Object.entries(peerStreams).forEach(([peerId, stream]) => {
       if (stream) {
@@ -101,15 +101,22 @@ export default function RoomView({
       }
     });
     if (audioTracks.length > 0) {
-      return new MediaStream(audioTracks);
+      return audioTracks;
     }
     // Fallback to local mic only if completely alone in room (single user testing)
     const hasRemotePeers = Object.keys(peerStreams).length > 0;
     if (!hasRemotePeers && localStream && !isMuted) {
-      return localStream;
+      return localStream.getAudioTracks().filter((t) => t.readyState === 'live');
     }
-    return null;
+    return [];
   }, [peerStreams, userRole, isSttEnabled, localStream, isMuted]);
+
+  const sttTracksKey = sttTracks.map((t) => t.id).sort().join('|');
+  const sttAudioStream = useMemo(
+    () => (sttTracks.length ? new MediaStream(sttTracks) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sttTracksKey]
+  );
 
   const isSttActive = userRole === ROLES.SIGNER && isSttEnabled && !!sttAudioStream;
   const {

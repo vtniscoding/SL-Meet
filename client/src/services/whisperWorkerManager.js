@@ -71,16 +71,19 @@ export function preloadWhisperModel() {
   if (isReady) return Promise.resolve();
 
   return new Promise((resolve) => {
+    let timeoutId = null;
     const unsub = subscribeWhisperWorker((data) => {
       if (data.type === 'status' && (data.status === 'ready' || data.status === 'error')) {
+        if (timeoutId) clearTimeout(timeoutId);
         unsub();
         resolve();
       }
     });
-    // Safety fallback timeout to ensure app startup never hangs
-    setTimeout(() => {
+    // Extended timeout (60s) for initial download of whisper-base (~140MB)
+    // Once cached in IndexedDB, subsequent launches take < 1.5s
+    timeoutId = setTimeout(() => {
       unsub();
       resolve();
-    }, 8000);
+    }, 60000);
   });
 }

@@ -54,11 +54,19 @@ export function useLocalMedia() {
         localStreamRef.current = null;
       }
 
+      const audioConstraints = {
+        ...(audioId ? { deviceId: { exact: audioId } } : {}),
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        channelCount: 1,
+      };
+
       const constraints = {
         video: videoId
           ? { deviceId: { exact: videoId }, width: 1280, height: 720 }
           : { width: 1280, height: 720 },
-        audio: audioId ? { deviceId: { exact: audioId } } : true,
+        audio: audioConstraints,
       };
 
       let stream = null;
@@ -70,7 +78,7 @@ export function useLocalMedia() {
         // Fallback: Acquire audio stream if camera is locked by another window/process
         try {
           stream = await navigator.mediaDevices.getUserMedia({
-            audio: audioId ? { deviceId: { exact: audioId } } : true,
+            audio: audioConstraints,
           });
           setIsCameraOff(true);
         } catch (audioErr) {
@@ -89,8 +97,20 @@ export function useLocalMedia() {
         // Update selected device IDs from active stream tracks
         const audioTrack = stream.getAudioTracks()[0];
         const videoTrack = stream.getVideoTracks()[0];
-        if (audioTrack && audioTrack.getSettings().deviceId) {
-          setSelectedAudioDeviceId(audioTrack.getSettings().deviceId);
+        if (audioTrack) {
+          const settings = audioTrack.getSettings();
+          if (settings.deviceId) {
+            setSelectedAudioDeviceId(settings.deviceId);
+          }
+          if (import.meta.env.DEV) {
+            console.log('[useLocalMedia] Audio track settings:', {
+              echoCancellation: settings.echoCancellation,
+              noiseSuppression: settings.noiseSuppression,
+              autoGainControl: settings.autoGainControl,
+              channelCount: settings.channelCount,
+              sampleRate: settings.sampleRate,
+            });
+          }
         }
         if (videoTrack && videoTrack.getSettings().deviceId) {
           setSelectedVideoDeviceId(videoTrack.getSettings().deviceId);
