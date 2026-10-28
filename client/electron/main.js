@@ -1,7 +1,6 @@
-import { app, BrowserWindow, ipcMain, session, desktopCapturer } from 'electron';
+import { app, BrowserWindow, ipcMain, session, desktopCapturer, screen } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
-
 import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -10,6 +9,9 @@ const __dirname = path.dirname(__filename);
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 let mainWindow = null;
+let isPipMode = false;
+let prePipBounds = null;
+let prePipWasMaximized = false;
 
 function createWindow() {
   const primaryIcon = app.isPackaged
@@ -55,6 +57,9 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    isPipMode = false;
+    prePipBounds = null;
+    prePipWasMaximized = false;
   });
 }
 
@@ -134,3 +139,59 @@ ipcMain.handle('window-is-maximized', () => {
   return mainWindow && !mainWindow.isDestroyed() ? mainWindow.isMaximized() : false;
 });
 
+// Picture-in-Picture (PiP) Window IPC Handlers
+ipcMain.handle('window-enter-pip', () => {
+  if (!mainWindow || mainWindow.isDestroyed() || isPipMode) return false;
+
+  prePipWasMaximized = mainWindow.isMaximized();
+  prePipBounds = mainWindow.getBounds();
+
+  if (prePipWasMaximized) {
+    mainWindow.unmaximize();
+  }
+
+  // Allow window to shrink below regular desktop constraints
+  mainWindow.setMinimumSize(320, 260);
+
+  const display = screen.getDisplayMatching(prePipBounds);
+  const { workArea } = display;
+  const pipWidth = 360;
+  const pipHeight = 320;
+  const margin = 20;
+
+  mainWindow.setBounds({
+    x: Math.round(workArea.x + workArea.width - pipWidth - margin),
+    y: Math.round(workArea.y + workArea.height - pipHeight - margin),
+    width: pipWidth,
+    height: pipHeight,
+  });
+
+  mainWindow.setAlwaysOnTop(true, 'screen-saver');
+  isPipMode = true;
+  mainWindow.webContents.send('pip-mode-changed', true);
+  return true;
+});
+
+ipcMain.handle('window-exit-pip', () => {
+  if (!mainWindow || mainWindow.isDestroyed() || !isPipMode) return false;
+
+  mainWindow.setAlwaysOnTop(false);
+  mainWindow.setMinimumSize(1024, 680);
+
+  if (prePipBounds) {
+    mainWindow.setBounds(prePipBounds);
+  } else {
+    mainWindow.setSize(1280, 800);
+    mainWindow.center();
+  }
+
+  if (prePipWasMaximized) {
+    mainWindow.maximize();
+  }
+
+  isPipMode = false;
+  mainWindow.webContents.send('pip-mode-changed', false);
+  return true;
+});
+
+ipcMain.handle('window-is-pip', () => isPipMode);

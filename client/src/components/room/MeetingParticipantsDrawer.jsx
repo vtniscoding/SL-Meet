@@ -71,7 +71,7 @@ export default function MeetingParticipantsDrawer({
   };
 
   return (
-    <aside className="w-80 sm:w-96 h-full bg-[#202124] border-l border-slate-700/60 flex flex-col justify-between z-20 shadow-2xl rounded-2xl overflow-hidden transition-all duration-300 select-none">
+    <aside className="w-80 sm:w-96 h-full bg-[#202124] border-l border-slate-700/60 flex flex-col justify-between z-20 shadow-2xl rounded-xl overflow-hidden transition-all duration-300 select-none">
       {/* Drawer Header */}
       <header className="px-5 py-4 bg-[#28292C] border-b border-slate-700/60 flex items-center justify-between">
         <div className="flex items-center space-x-2.5">
@@ -129,7 +129,7 @@ export default function MeetingParticipantsDrawer({
             return (
               <div
                 key={p.id}
-                className="w-full px-3 py-2.5 rounded-xl bg-[#28292C]/70 hover:bg-[#35373A] border border-slate-800 flex items-center justify-between transition-colors group"
+                className="w-full px-3 py-2.5 rounded-lg bg-[#28292C]/70 hover:bg-[#35373A] border border-slate-800 flex items-center justify-between transition-colors group"
               >
                 {/* Left: Avatar & Name */}
                 <div className="flex items-center space-x-3 min-w-0 flex-1 pr-2">

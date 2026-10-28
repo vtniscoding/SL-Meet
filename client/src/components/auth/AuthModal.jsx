@@ -68,7 +68,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
 
   return (
     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl p-6 md:p-8 w-full max-w-md shadow-2xl border border-slate-100 relative">
+      <div className="bg-white rounded-xl p-6 md:p-8 w-full max-w-md shadow-2xl border border-slate-100 relative">
         {/* Close Button */}
         <button
           onClick={onClose}
@@ -84,9 +84,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
             alt="SLMeet"
             className="h-10 mx-auto mb-3 object-contain"
           />
-          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
-            {mode === 'login' ? 'Welcome back' : 'Create an account'}
-          </h2>
           <p className="text-xs text-slate-500 mt-1">
             {mode === 'login'
               ? 'Sign in to create and host video meetings'
@@ -96,14 +93,14 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
 
         {/* Feedback Messages */}
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-2xl flex items-start space-x-2.5 text-xs text-red-600">
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start space-x-2.5 text-xs text-red-600">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
             <span>{error}</span>
           </div>
         )}
 
         {successMsg && (
-          <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-700">
+          <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-700">
             {successMsg}
           </div>
         )}
@@ -120,7 +117,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
                   placeholder="e.g. Sarah Jenkins"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-[#5CA0F2] transition-colors"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-300 text-sm focus:outline-none focus:border-[#5CA0F2] transition-colors"
                 />
               </div>
             </div>
@@ -136,7 +133,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-[#5CA0F2] transition-colors"
+                className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-300 text-sm focus:outline-none focus:border-[#5CA0F2] transition-colors"
               />
             </div>
           </div>
@@ -151,7 +148,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-[#5CA0F2] transition-colors"
+                className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-300 text-sm focus:outline-none focus:border-[#5CA0F2] transition-colors"
               />
             </div>
           </div>
@@ -159,7 +156,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full mt-2 bg-[#5CA0F2] hover:bg-[#4A8FE0] disabled:bg-[#5CA0F2]/60 text-white font-semibold text-sm py-3 rounded-2xl shadow-sm transition-all flex items-center justify-center space-x-2 outline-none cursor-pointer"
+            className="w-full mt-2 bg-[#5CA0F2] hover:bg-[#4A8FE0] disabled:bg-[#5CA0F2]/60 text-white font-semibold text-sm py-3 rounded-lg shadow-sm transition-all flex items-center justify-center space-x-2 outline-none cursor-pointer"
           >
             {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
             <span>{mode === 'login' ? 'Sign In' : 'Sign Up'}</span>

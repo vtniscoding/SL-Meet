@@ -20,7 +20,7 @@ export const brandColors = {
 
 export const roomColors = {
   // Canvases
-  bg: '#121212',             // Ultra dark meeting room backdrop
+  bg: '#000000',             // Deep pure black meeting room backdrop
   surface: '#202124',        // Control bar, drawers header, modals
   surfaceSubtle: '#28292C',  // 3-dots popup menu, floating cards
 

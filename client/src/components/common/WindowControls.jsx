@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
  * Windows 11 Native-Style Window Control Buttons
  * Minimizes, Maximizes/Restores, and Closes the frameless Electron application window.
  */
-export default function WindowControls({ className = '' }) {
+export default function WindowControls({ className = '', dark = false, onMinimize = null }) {
   const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {
@@ -25,7 +25,9 @@ export default function WindowControls({ className = '' }) {
   }, []);
 
   const handleMinimize = () => {
-    if (window.electronAPI?.minimize) {
+    if (onMinimize) {
+      onMinimize();
+    } else if (window.electronAPI?.minimize) {
       window.electronAPI.minimize();
     }
   };
@@ -53,6 +55,14 @@ export default function WindowControls({ className = '' }) {
     }
   };
 
+  const normalBtnClass = dark
+    ? 'w-8 h-7 rounded-md flex items-center justify-center text-slate-300 hover:bg-white/15 hover:text-white active:bg-white/25 transition-colors cursor-pointer outline-none focus:outline-none'
+    : 'w-8 h-7 rounded-md flex items-center justify-center text-slate-600 hover:bg-slate-300/70 hover:text-slate-900 active:bg-slate-300/90 transition-colors cursor-pointer outline-none focus:outline-none';
+
+  const closeBtnClass = dark
+    ? 'w-8 h-7 rounded-md flex items-center justify-center text-slate-300 hover:bg-[#E81123] hover:text-white active:bg-[#BF0F1D] active:text-white transition-colors cursor-pointer outline-none focus:outline-none'
+    : 'w-8 h-7 rounded-md flex items-center justify-center text-slate-600 hover:bg-[#E81123] hover:text-white active:bg-[#BF0F1D] active:text-white transition-colors cursor-pointer outline-none focus:outline-none';
+
   return (
     <div
       className={`flex items-center space-x-1 select-none ${className}`}
@@ -63,7 +73,7 @@ export default function WindowControls({ className = '' }) {
       <button
         type="button"
         onClick={handleMinimize}
-        className="w-8 h-7 rounded-md flex items-center justify-center text-slate-600 hover:bg-slate-300/70 hover:text-slate-900 active:bg-slate-300/90 transition-colors cursor-pointer outline-none focus:outline-none"
+        className={normalBtnClass}
         title="Minimize"
         aria-label="Minimize Window"
       >
@@ -76,7 +86,7 @@ export default function WindowControls({ className = '' }) {
       <button
         type="button"
         onClick={handleToggleMaximize}
-        className="w-8 h-7 rounded-md flex items-center justify-center text-slate-600 hover:bg-slate-300/70 hover:text-slate-900 active:bg-slate-300/90 transition-colors cursor-pointer outline-none focus:outline-none"
+        className={normalBtnClass}
         title={isMaximized ? 'Restore Down' : 'Maximize'}
         aria-label={isMaximized ? 'Restore Down Window' : 'Maximize Window'}
       >
@@ -98,7 +108,7 @@ export default function WindowControls({ className = '' }) {
       <button
         type="button"
         onClick={handleClose}
-        className="w-8 h-7 rounded-md flex items-center justify-center text-slate-600 hover:bg-[#E81123] hover:text-white active:bg-[#BF0F1D] active:text-white transition-colors cursor-pointer outline-none focus:outline-none"
+        className={closeBtnClass}
         title="Close"
         aria-label="Close Window"
       >

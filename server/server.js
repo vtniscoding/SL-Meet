@@ -408,8 +408,8 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Real-Time Camera & Microphone Status Broadcast
-  socket.on('media_status_change', ({ roomId, isMuted, isCameraOff, isAiVisionActive }) => {
+  // Real-Time Camera & Microphone Status Broadcast (Including Voice Activity Detection)
+  socket.on('media_status_change', ({ roomId, isMuted, isCameraOff, isAiVisionActive, isSpeaking }) => {
     if (roomId && rooms.has(roomId)) {
       const roomData = rooms.get(roomId);
       const roomMembers = roomData.members;
@@ -418,6 +418,7 @@ io.on('connection', (socket) => {
         meta.isMuted = !!isMuted;
         meta.isCameraOff = !!isCameraOff;
         meta.isAiVisionActive = !!isAiVisionActive;
+        meta.isSpeaking = !!isSpeaking;
         roomMembers.set(socket.id, meta);
       }
       
@@ -426,6 +427,7 @@ io.on('connection', (socket) => {
         isMuted: !!isMuted,
         isCameraOff: !!isCameraOff,
         isAiVisionActive: !!isAiVisionActive,
+        isSpeaking: !!isSpeaking,
       });
     }
   });

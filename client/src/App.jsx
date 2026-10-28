@@ -101,7 +101,9 @@ export default function App() {
   }, [user, profile]);
 
   // Hardware Media Stream & Device State (Shared between Lobby & Room)
-  const mediaState = useLocalMedia();
+  // Hardware Media Stream & Device State (Only active in Waiting Lobby or Room View)
+  const isMediaActive = !isPreloading && (currentView === 'lobby' || currentView === 'room');
+  const mediaState = useLocalMedia({ isActive: isMediaActive });
 
   // Socket connection hook
   const { isConnected, leaveRoom, toggleConnection } = useSocket();
@@ -267,6 +269,7 @@ export default function App() {
   };
 
   const handleLeaveRoom = () => {
+    mediaState.stopMedia();
     leaveRoom();
     setUserRole(null);
     setCurrentView(user ? 'dashboard' : 'home');
@@ -274,6 +277,7 @@ export default function App() {
   };
 
   const handleBackHomeFromLobby = () => {
+    mediaState.stopMedia();
     setUserRole(null);
     setCurrentView(user ? 'dashboard' : 'home');
     setActiveRoomId('');
@@ -457,12 +461,12 @@ export default function App() {
         <div
           onMouseEnter={() => setIsHoveringCard(true)}
           onMouseLeave={handleCardMouseLeave}
-          className="flex-1 bg-white rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-center p-6 md:p-8 lg:p-12 overflow-hidden relative group/card transition-colors duration-500"
+          className="flex-1 bg-white rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-center p-6 md:p-8 lg:p-12 overflow-hidden relative group/card transition-colors duration-500"
         >
           {/* Vignetting Effect: Deep Ocean Blue Inner Shadow & Edge Vignette on Container Hover */}
           <div
             aria-hidden="true"
-            className={`absolute inset-0 rounded-2xl pointer-events-none transition-all duration-700 ease-out z-0 ${
+            className={`absolute inset-0 rounded-xl pointer-events-none transition-all duration-700 ease-out z-0 ${
               isHoveringCard
                 ? 'opacity-100 shadow-[inset_0_0_120px_rgba(29,78,216,0.15),inset_0_0_40px_rgba(30,58,138,0.12)] bg-[radial-gradient(ellipse_at_center,transparent_55%,rgba(30,58,138,0.06)_85%,rgba(29,78,216,0.14)_100%)] ring-1 ring-blue-500/20'
                 : 'opacity-0 shadow-[inset_0_0_0px_rgba(0,0,0,0)] ring-0'
@@ -543,18 +547,18 @@ export default function App() {
             {/* 1. Dedicated Hardware-Accelerated Static Shadow Layer (Immune to Input Focus/Blur Repaints) */}
             <div
               aria-hidden="true"
-              className="absolute inset-0 rounded-2xl shadow-[0_25px_60px_-15px_rgba(0,0,0,0.3)] pointer-events-none transform-gpu"
+              className="absolute inset-0 rounded-xl shadow-[0_25px_60px_-15px_rgba(0,0,0,0.3)] pointer-events-none transform-gpu"
             />
 
             {/* 2. Modal Card Surface */}
-            <div className="relative bg-white rounded-2xl p-6 border border-slate-200/80 antialiased">
+            <div className="relative bg-white rounded-xl p-6 border border-slate-200/80 antialiased">
               <h3 className="text-lg font-bold text-slate-900 mb-1">Join a Meeting</h3>
               <p className="text-xs text-slate-500 mb-4">
                 Enter the meeting ID and your name to join the lobby.
               </p>
 
               {codeError && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center space-x-2 text-xs text-red-600">
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center space-x-2 text-xs text-red-600">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{codeError}</span>
                 </div>
@@ -573,7 +577,7 @@ export default function App() {
                       setRoomCode(e.target.value);
                       if (codeError) setCodeError('');
                     }}
-                    className={`w-full px-4 py-2.5 rounded-xl border text-sm focus:outline-none transition-colors ${
+                    className={`w-full px-4 py-2.5 rounded-lg border text-sm focus:outline-none transition-colors ${
                       codeError && !roomCode.trim()
                         ? 'border-red-400 focus:border-red-500'
                         : 'border-slate-300 focus:border-[#5CA0F2]'
@@ -594,7 +598,7 @@ export default function App() {
                       setJoinName(e.target.value);
                       if (codeError) setCodeError('');
                     }}
-                    className={`w-full px-4 py-2.5 rounded-xl border text-sm focus:outline-none transition-colors ${
+                    className={`w-full px-4 py-2.5 rounded-lg border text-sm focus:outline-none transition-colors ${
                       codeError && !joinName.trim()
                         ? 'border-red-400 focus:border-red-500'
                         : 'border-slate-300 focus:border-[#5CA0F2]'
@@ -606,7 +610,7 @@ export default function App() {
                   <button
                     type="submit"
                     disabled={isCheckingCode || !roomCode.trim() || !joinName.trim()}
-                    className="px-6 py-2 rounded-xl text-xs font-semibold text-white bg-[#5CA0F2] hover:bg-[#4A8FE0] disabled:bg-[#5CA0F2]/60 cursor-pointer flex items-center space-x-2 transition-all shadow-xs"
+                    className="px-6 py-2 rounded-lg text-xs font-semibold text-white bg-[#5CA0F2] hover:bg-[#4A8FE0] disabled:bg-[#5CA0F2]/60 cursor-pointer flex items-center space-x-2 transition-all shadow-xs"
                   >
                     {isCheckingCode && <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />}
                     <span>{isCheckingCode ? 'Verifying...' : 'Join'}</span>
@@ -619,7 +623,7 @@ export default function App() {
                       setJoinName('');
                       setCodeError('');
                     }}
-                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 transition-colors cursor-pointer"
+                    className="px-4 py-2 rounded-lg text-xs font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 transition-colors cursor-pointer"
                   >
                     Cancel
                   </button>

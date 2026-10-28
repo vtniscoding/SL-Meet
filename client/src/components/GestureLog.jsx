@@ -3,7 +3,7 @@ import { Sparkles, Radio, CheckCircle2 } from 'lucide-react';
 
 export default function GestureLog({ activeGesture, remoteGestures }) {
   return (
-    <div className="h-44 p-4 rounded-2xl glass-card border border-slate-800/90 flex flex-col shadow-xl">
+    <div className="h-44 p-4 rounded-xl glass-card border border-slate-800/90 flex flex-col shadow-xl">
       <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-800">
         <div className="flex items-center space-x-2">
           <Sparkles className="w-4 h-4 text-indigo-400" />
@@ -16,7 +16,7 @@ export default function GestureLog({ activeGesture, remoteGestures }) {
 
       <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 overflow-y-auto pr-1">
         {/* Local Active Recognition */}
-        <div className="p-3 rounded-xl bg-slate-900/80 border border-indigo-500/20 flex items-center justify-between">
+        <div className="p-3 rounded-lg bg-slate-900/80 border border-indigo-500/20 flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center">
               <CheckCircle2 className="w-4 h-4" />
@@ -36,7 +36,7 @@ export default function GestureLog({ activeGesture, remoteGestures }) {
         </div>
 
         {/* Remote Socket Stream */}
-        <div className="p-3 rounded-xl bg-slate-900/80 border border-cyan-500/20 flex items-center justify-between">
+        <div className="p-3 rounded-lg bg-slate-900/80 border border-cyan-500/20 flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 flex items-center justify-center">
               <Radio className="w-4 h-4 animate-pulse" />

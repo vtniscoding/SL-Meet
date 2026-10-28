@@ -12,7 +12,7 @@ export default function VisionCamera({
   onStart,
 }) {
   return (
-    <div className="relative flex-1 flex flex-col justify-between p-4 rounded-2xl glass-card border border-slate-800/90 overflow-hidden shadow-2xl">
+    <div className="relative flex-1 flex flex-col justify-between p-4 rounded-xl glass-card border border-slate-800/90 overflow-hidden shadow-2xl">
       {/* Top Overlay Bar */}
       <div className="absolute top-6 left-6 right-6 z-20 flex items-center justify-between pointer-events-none">
         {/* Active Gesture Badge */}
@@ -64,7 +64,7 @@ export default function VisionCamera({
         {/* Empty / Stopped State */}
         {!isProcessing && (
           <div className="z-30 flex flex-col items-center justify-center p-8 text-center bg-slate-950/80 backdrop-blur-md w-full h-full">
-            <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 flex items-center justify-center mb-4 shadow-xl">
+            <div className="w-16 h-16 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 flex items-center justify-center mb-4 shadow-xl">
               <Camera className="w-8 h-8 animate-pulse" />
             </div>
             <h3 className="text-lg font-bold text-white mb-2">MediaPipe AI Camera Ready</h3>

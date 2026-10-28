@@ -12,8 +12,15 @@ import MeetingControlBar from './room/MeetingControlBar';
 import MeetingChatDrawer from './room/MeetingChatDrawer';
 import MeetingParticipantsDrawer from './room/MeetingParticipantsDrawer';
 import CaptionDock from './room/captions/CaptionDock';
-import CaptionHistoryDrawer from './room/captions/CaptionHistoryDrawer';
 import RolePromptModal from './room/RolePromptModal';
+import MeetingPipView from './room/MeetingPipView';
+import WindowControls from './common/WindowControls';
+import {
+  ZoomSpeakerFillIcon,
+  ZoomGalleryFillIcon,
+  ZoomSideBySideFillIcon,
+  CheckmarkIcon,
+} from '../icons';
 import { ROLES } from '../constants/roles';
 
 /**
@@ -149,6 +156,7 @@ export default function RoomView({
         setLocalSpeechCaptions((prev) => ({
           ...prev,
           [speakerId]: {
+            senderId: speakerId,
             text,
             isFinal,
             senderName: speakerName,
@@ -219,26 +227,92 @@ export default function RoomView({
   }, [speechCaptions, userRole]);
 
   // Meeting Room Layout Modes: 'tiled' (Auto Grid) | 'sidebar' (Thanh bên) | 'spotlight' (Tiêu điểm)
+  const [isPipMode, setIsPipMode] = useState(false);
   const [layoutMode, setLayoutMode] = useState('tiled');
   const [pinnedId, setPinnedId] = useState(null);
-  const [isAiEnabled, setIsAiEnabled] = useState(true);
-  const [isHandTrackingEnabled, setIsHandTrackingEnabled] = useState(userRole === ROLES.SIGNER);
+  const [isAiEnabled, setIsAiEnabled] = useState(false);
+  const [isHandTrackingEnabled, setIsHandTrackingEnabled] = useState(false);
   const [activeSignerId, setActiveSignerId] = useState(null);
+
+  // Real-time meeting clock (Google Meet style: e.g. 2:56 PM)
+  const [meetingTime, setMeetingTime] = useState(() =>
+    new Date().toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    })
+  );
+
+  useEffect(() => {
+    const updateTime = () => {
+      setMeetingTime(
+        new Date().toLocaleTimeString('en-US', {
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+        })
+      );
+    };
+    const timer = setInterval(updateTime, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Zoom-Style View Mode dropdown state & ref
+  const [isViewDropdownOpen, setIsViewDropdownOpen] = useState(false);
+  const viewDropdownRef = useRef(null);
+
+  // Close View dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (viewDropdownRef.current && !viewDropdownRef.current.contains(event.target)) {
+        setIsViewDropdownOpen(false);
+      }
+    };
+    if (isViewDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isViewDropdownOpen]);
+
+    // Picture-in-Picture IPC State Synchronization
+  useEffect(() => {
+    if (window.electronAPI?.onPiPState) {
+      const cleanup = window.electronAPI.onPiPState((isPip) => {
+        setIsPipMode(isPip);
+      });
+      return () => {
+        if (typeof cleanup === 'function') cleanup();
+      };
+    }
+  }, []);
+
+  const handleEnterPiP = useCallback(async () => {
+    if (window.electronAPI?.enterPiP) {
+      await window.electronAPI.enterPiP();
+    }
+    setIsPipMode(true);
+  }, []);
+
+  const handleExitPiP = useCallback(async () => {
+    if (window.electronAPI?.exitPiP) {
+      await window.electronAPI.exitPiP();
+    }
+    setIsPipMode(false);
+  }, []);
 
   // Sync role with initialRole if it changes or becomes available
   useEffect(() => {
     if (initialRole && initialRole !== userRole) {
       setUserRole(initialRole);
-      if (initialRole === ROLES.SIGNER) {
-        setIsHandTrackingEnabled(true);
-      }
+      
     }
   }, [initialRole]);
 
-  // In-Call Real-Time Drawers state (Mutually Exclusive: Chat | People | Caption History)
+  // In-Call Real-Time Drawers state (Mutually Exclusive: Chat | People)
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isPeopleOpen, setIsPeopleOpen] = useState(false);
-  const [isCaptionHistoryOpen, setIsCaptionHistoryOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
   const prevLocalPresentingRef = useRef(false);
@@ -253,9 +327,30 @@ export default function RoomView({
       if (newRole === ROLES.NON_SIGNER) {
         setIsHandTrackingEnabled(false);
         setIsSttEnabled(false);
+        setIsAiEnabled(false);
       } else if (newRole === ROLES.SIGNER) {
         setIsSttEnabled(false);
-        setIsHandTrackingEnabled(true);
+        setIsAiEnabled(false);
+        setIsHandTrackingEnabled(false);
+      }
+      setIsRoleModalOpen(false);
+    },
+    [changeRole]
+  );
+
+  // Dedicated callback for switching subtitle mode (SLT / STT) from CaptionDock dropdown
+  const handleSwitchSubtitleMode = useCallback(
+    (newRole) => {
+      setUserRole(newRole);
+      changeRole(newRole);
+      if (newRole === ROLES.NON_SIGNER) {
+        setIsHandTrackingEnabled(false);
+        setIsSttEnabled(false);
+        setIsAiEnabled(true);
+      } else if (newRole === ROLES.SIGNER) {
+        setIsSttEnabled(true);
+        setIsAiEnabled(false);
+        setIsHandTrackingEnabled(false);
       }
       setIsRoleModalOpen(false);
     },
@@ -368,7 +463,6 @@ export default function RoomView({
       if (next) {
         setUnreadCount(0);
         setIsPeopleOpen(false);
-        setIsCaptionHistoryOpen(false);
       }
       return next;
     });
@@ -379,22 +473,10 @@ export default function RoomView({
       const next = !prev;
       if (next) {
         setIsChatOpen(false);
-        setIsCaptionHistoryOpen(false);
       }
       return next;
     });
   };
-
-  const handleToggleCaptionHistory = useCallback(() => {
-    setIsCaptionHistoryOpen((prev) => {
-      const next = !prev;
-      if (next) {
-        setIsChatOpen(false);
-        setIsPeopleOpen(false);
-      }
-      return next;
-    });
-  }, []);
 
   // Dynamic Participants Roster constructed from local state, socket roomUsers, and WebRTC peerStreams
   const localDisplayName = userName ? `${userName} (You)` : 'You';
@@ -537,6 +619,9 @@ export default function RoomView({
   };
 
   const handleLeave = () => {
+    if (isPipMode) {
+      handleExitPiP();
+    }
     stopScreenShare();
     stopMedia();
     leaveRoom();
@@ -580,6 +665,12 @@ export default function RoomView({
     activeSignerId ||
     (isHandTrackingEnabled ? 'local' : activeAiVisionPeerId || null);
 
+  const activeSignerParticipant = useMemo(() => {
+    return updatedParticipants.find((p) => p.id === effectiveSignerId);
+  }, [updatedParticipants, effectiveSignerId]);
+  const activeSignerName =
+    activeSignerParticipant?.name || (userRole === ROLES.SIGNER ? userName : 'Signer');
+
   // Active speaker names for live speaking telemetry indicators in caption dock
   const activeSpeakingNames = useMemo(() => {
     const names = [];
@@ -594,35 +685,211 @@ export default function RoomView({
     return names;
   }, [isSpeaking, isMuted, userName, roomUsers, socketId, peerMediaStatus]);
 
+  // Primary participant for PiP Mini Player
+  const pipMainParticipant = useMemo(() => {
+    if (pinnedId) {
+      const pinned = updatedParticipants.find((p) => p.id === pinnedId);
+      if (pinned) return pinned;
+    }
+    const screenShare = updatedParticipants.find((p) => p.isScreenSharing);
+    if (screenShare) return screenShare;
+
+    const signer = updatedParticipants.find((p) => p.id === effectiveSignerId);
+    if (signer) return signer;
+
+    const activeSpeaker = updatedParticipants.find((p) => p.isSpeaking && !p.isMuted && !p.isLocal);
+    if (activeSpeaker) return activeSpeaker;
+
+    const firstRemoteWithVideo = updatedParticipants.find((p) => !p.isLocal && !p.isCameraOff && p.hasStream);
+    if (firstRemoteWithVideo) return firstRemoteWithVideo;
+
+    const firstRemote = updatedParticipants.find((p) => !p.isLocal);
+    if (firstRemote) return firstRemote;
+
+    return updatedParticipants.find((p) => p.isLocal) || localCameraParticipant;
+  }, [pinnedId, updatedParticipants, effectiveSignerId, localCameraParticipant]);
+
+  if (isPipMode) {
+    return (
+      <MeetingPipView
+        mainParticipant={pipMainParticipant}
+        localStream={localStream}
+        userRole={userRole}
+        isMuted={isMuted}
+        isCameraOff={isCameraOff}
+        speechCaptions={combinedSpeechCaptions}
+        currentSentence={currentSentence}
+        liveTokens={liveTokens}
+        signerName={activeSignerName}
+        isAiEnabled={isAiEnabled}
+        isSttEnabled={isSttEnabled}
+        onExitPiP={handleExitPiP}
+        onLeaveRoom={handleLeave}
+        onToggleMic={toggleMic}
+        onToggleCamera={toggleCamera}
+      />
+    );
+  }
+
   return (
-    <div className="w-screen h-screen max-h-screen bg-[#121212] text-white flex flex-col justify-between p-3.5 sm:p-5 md:p-6 font-sans select-none overflow-hidden">
-      {/* Top Header Room Info */}
-      <header className="w-full text-xs md:text-sm font-semibold text-slate-400 flex items-center justify-between z-10 shrink-0 select-none">
-        <div className="flex items-center space-x-1.5">
-          <span>Room ID:</span>
-          <span className="font-mono font-bold text-white tracking-wide select-all cursor-text">
+    <div className="w-screen h-screen max-h-screen bg-[#121212] text-white flex flex-col justify-between font-sans select-none overflow-hidden">
+      {/* Top Header Room Info with Custom Window Dragging & IPC WindowControls */}
+      <header
+        onDoubleClick={() => window.electronAPI?.toggleMaximize?.()}
+        style={{ WebkitAppRegion: 'drag' }}
+        data-tauri-drag-region="true"
+        className="w-full h-11 px-4 md:px-6 flex items-center justify-between z-30 shrink-0 select-none bg-transparent"
+      >
+        {/* Left: Google Meet Style Time & Room ID (Draggable title bar area) */}
+        <div className="flex items-center space-x-2.5 text-xs md:text-sm font-semibold text-white select-none">
+          <span>{meetingTime}</span>
+          <span className="text-white/30 font-light select-none">|</span>
+          <span
+            className="tracking-normal select-all cursor-text font-semibold font-sans"
+            style={{ WebkitAppRegion: 'no-drag' }}
+            title="Room ID"
+          >
             {roomId}
           </span>
+        </div>
+
+        {/* Right Header Area: Zoom-Style View Switcher & Windows Native WindowControls (IPC) */}
+        <div className="flex items-center space-x-1.5 ml-auto">
+          {/* Zoom-Style View Mode Dropdown (Icon-only, filled, no background) */}
+          <div className="relative" ref={viewDropdownRef}>
+            <button
+              onClick={() => setIsViewDropdownOpen((prev) => !prev)}
+              style={{ WebkitAppRegion: 'no-drag' }}
+              className="w-8 h-7 rounded-md flex items-center justify-center text-white/90 hover:bg-white/15 hover:text-white active:bg-white/25 transition-colors cursor-pointer outline-none focus:outline-none bg-transparent"
+              title="Change view"
+            >
+              {layoutMode === 'spotlight' || layoutMode === 'speaker' ? (
+                <ZoomSpeakerFillIcon className="w-4 h-4 text-white" />
+              ) : layoutMode === 'sidebar' ? (
+                <ZoomSideBySideFillIcon className="w-4 h-4 text-white" />
+              ) : (
+                <ZoomGalleryFillIcon className="w-4 h-4 text-white" />
+              )}
+            </button>
+
+            {isViewDropdownOpen && (
+              <div
+                className="absolute top-8.5 right-0 w-48 bg-[#1E1F22] rounded-2xl p-1.5 shadow-2xl z-50 text-slate-100 text-[13px] border border-white/10 space-y-0.5"
+                style={{ WebkitAppRegion: 'no-drag' }}
+              >
+                <button
+                  onClick={() => {
+                    setLayoutMode('spotlight');
+                    setIsViewDropdownOpen(false);
+                  }}
+                  className={`w-full px-2.5 py-2 rounded-xl flex items-center justify-between transition-colors cursor-pointer outline-none ${
+                    layoutMode === 'spotlight' || layoutMode === 'speaker'
+                      ? 'bg-white/15 text-white font-medium'
+                      : 'hover:bg-white/10 text-slate-200 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2">
+                    <span className="w-4 flex items-center justify-center text-white shrink-0">
+                      {(layoutMode === 'spotlight' || layoutMode === 'speaker') && (
+                        <CheckmarkIcon className="w-3.5 h-3.5 text-white stroke-[2.5]" />
+                      )}
+                    </span>
+                    <span>Speaker</span>
+                  </div>
+                  <ZoomSpeakerFillIcon className="w-4 h-4 text-slate-300 shrink-0" />
+                </button>
+                <button
+                  onClick={() => {
+                    setLayoutMode('tiled');
+                    setIsViewDropdownOpen(false);
+                  }}
+                  className={`w-full px-2.5 py-2 rounded-xl flex items-center justify-between transition-colors cursor-pointer outline-none ${
+                    layoutMode === 'tiled' || layoutMode === 'gallery'
+                      ? 'bg-white/15 text-white font-medium'
+                      : 'hover:bg-white/10 text-slate-200 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2">
+                    <span className="w-4 flex items-center justify-center text-white shrink-0">
+                      {(layoutMode === 'tiled' || layoutMode === 'gallery') && (
+                        <CheckmarkIcon className="w-3.5 h-3.5 text-white stroke-[2.5]" />
+                      )}
+                    </span>
+                    <span>Gallery</span>
+                  </div>
+                  <ZoomGalleryFillIcon className="w-4 h-4 text-slate-300 shrink-0" />
+                </button>
+                <button
+                  onClick={() => {
+                    setLayoutMode('sidebar');
+                    setIsViewDropdownOpen(false);
+                  }}
+                  className={`w-full px-2.5 py-2 rounded-xl flex items-center justify-between transition-colors cursor-pointer outline-none ${
+                    layoutMode === 'sidebar'
+                      ? 'bg-white/15 text-white font-medium'
+                      : 'hover:bg-white/10 text-slate-200 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2">
+                    <span className="w-4 flex items-center justify-center text-white shrink-0">
+                      {layoutMode === 'sidebar' && (
+                        <CheckmarkIcon className="w-3.5 h-3.5 text-white stroke-[2.5]" />
+                      )}
+                    </span>
+                    <span>Side-by-side</span>
+                  </div>
+                  <ZoomSideBySideFillIcon className="w-4 h-4 text-slate-300 shrink-0" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Windows Native Controls (Dark Mode IPC) */}
+          <WindowControls dark={true} onMinimize={handleEnterPiP} />
         </div>
       </header>
 
       {/* Main Workspace: Meeting Layout Engine + Slide-over Chat & People Drawers */}
-      <main className="flex-1 w-full flex items-center justify-between gap-4 overflow-hidden my-1.5 relative min-h-0">
-        <div className="flex-1 h-full min-w-0">
-          <MeetingLayoutEngine
-            participants={updatedParticipants}
-            videoRef={videoRef}
-            localStream={activeLocalStream}
-            layoutMode={layoutMode}
-            pinnedId={pinnedId}
-            onTogglePin={handleTogglePin}
+      <main className="flex-1 w-full flex items-stretch justify-between gap-4 overflow-hidden px-4 md:px-6 my-1 relative min-h-0">
+        {/* Left Column: Video Stage + Subtitles CC Stage (Adapts width dynamically when drawers open - Image 2) */}
+        <div className="flex-1 h-full min-w-0 flex flex-col justify-between overflow-hidden">
+          <div className="flex-1 w-full min-h-0">
+            <MeetingLayoutEngine
+              participants={updatedParticipants}
+              videoRef={videoRef}
+              localStream={activeLocalStream}
+              layoutMode={layoutMode}
+              pinnedId={pinnedId}
+              onTogglePin={handleTogglePin}
+              isAiEnabled={isAiEnabled}
+              isHandTrackingEnabled={isHandTrackingEnabled && userRole === ROLES.SIGNER}
+              activeSignerId={effectiveSignerId}
+              speechCaptions={combinedSpeechCaptions}
+              userRole={userRole}
+              isSttActive={isSttActive}
+              onRegisterCanvas={registerCanvas}
+            />
+          </div>
+
+          {/* Dedicated Accessible Caption & Subtitle Dock (Stacked beneath video) */}
+          <CaptionDock
+            role={userRole}
+            prefs={captionPrefs}
+            onPrefsChange={updateCaptionPref}
+            onResetPrefs={resetCaptionPrefs}
+            isSttEnabled={isSttEnabled}
             isAiEnabled={isAiEnabled}
             isHandTrackingEnabled={isHandTrackingEnabled && userRole === ROLES.SIGNER}
-            activeSignerId={effectiveSignerId}
+            sttStatus={sttStatus}
+            sttProgress={sttProgress}
             speechCaptions={combinedSpeechCaptions}
-            userRole={userRole}
-            isSttActive={isSttActive}
-            onRegisterCanvas={registerCanvas}
+            currentSentence={currentSentence}
+            liveTokens={liveTokens}
+            transcriptLogs={transcriptLogs}
+            speechLogs={speechLogs}
+            speakingNames={activeSpeakingNames}
+            signerName={activeSignerName}
+            onSwitchMode={handleSwitchSubtitleMode}
           />
         </div>
 
@@ -647,67 +914,37 @@ export default function RoomView({
           onKickPeer={sendKickPeer}
           currentSocketId={socketId}
         />
-
-        {/* Real-Time In-Call Caption & Translation History Drawer */}
-        <CaptionHistoryDrawer
-          isOpen={isCaptionHistoryOpen}
-          onClose={() => setIsCaptionHistoryOpen(false)}
-          transcriptLogs={transcriptLogs}
-          speechLogs={speechLogs}
-          roomId={roomId}
-        />
       </main>
 
-      {/* Dedicated Accessible Caption & Subtitle Dock */}
-      <CaptionDock
-        role={userRole}
-        prefs={captionPrefs}
-        onPrefsChange={updateCaptionPref}
-        onResetPrefs={resetCaptionPrefs}
-        isSttEnabled={isSttEnabled}
-        isAiEnabled={isAiEnabled}
-        isHandTrackingEnabled={isHandTrackingEnabled && userRole === ROLES.SIGNER}
-        sttStatus={sttStatus}
-        sttProgress={sttProgress}
-        speechCaptions={combinedSpeechCaptions}
-        currentSentence={currentSentence}
-        liveTokens={liveTokens}
-        transcriptLogs={transcriptLogs}
-        speechLogs={speechLogs}
-        speakingNames={activeSpeakingNames}
-        onOpenHistory={handleToggleCaptionHistory}
-      />
-
       {/* Bottom Meeting Controls Bar */}
-      <MeetingControlBar
-        isMuted={isMuted}
-        isCameraOff={isCameraOff}
-        isScreenSharing={isScreenSharing}
-        isAiEnabled={isAiEnabled}
-        isHandTrackingEnabled={isHandTrackingEnabled && userRole === ROLES.SIGNER}
-        isChatOpen={isChatOpen}
-        isPeopleOpen={isPeopleOpen}
-        unreadCount={unreadCount}
-        participantCount={updatedParticipants.length}
-        layoutMode={layoutMode}
-        pinnedId={pinnedId}
-        userRole={userRole}
-        isSttEnabled={isSttEnabled}
-        sttStatus={sttStatus}
-        onToggleMic={toggleMic}
-        onToggleCamera={toggleCamera}
-        onToggleScreenShare={toggleScreenShare}
-        onToggleAi={handleToggleAi}
-        onToggleHandTracking={handleToggleHandTracking}
-        onToggleStt={() => setIsSttEnabled((prev) => !prev)}
-        onRequestSwitchRole={() => setIsRoleModalOpen(true)}
-        onToggleChat={handleToggleChat}
-        onTogglePeople={handleTogglePeople}
-        onChangeLayout={(mode) => setLayoutMode(mode)}
-        onExportTranscript={handleExportTranscript}
-        onResetPin={handleResetPin}
-        onLeaveRoom={handleLeave}
-      />
+      <div className="w-full px-4 md:px-6 pb-2.5 sm:pb-3 shrink-0 flex flex-col">
+        <MeetingControlBar
+          isMuted={isMuted}
+          isCameraOff={isCameraOff}
+          isScreenSharing={isScreenSharing}
+          isAiEnabled={isAiEnabled}
+          isHandTrackingEnabled={isHandTrackingEnabled && userRole === ROLES.SIGNER}
+          isChatOpen={isChatOpen}
+          isPeopleOpen={isPeopleOpen}
+          unreadCount={unreadCount}
+          participantCount={updatedParticipants.length}
+          pinnedId={pinnedId}
+          userRole={userRole}
+          isSttEnabled={isSttEnabled}
+          sttStatus={sttStatus}
+          onToggleMic={toggleMic}
+          onToggleCamera={toggleCamera}
+          onToggleScreenShare={toggleScreenShare}
+          onToggleAi={handleToggleAi}
+          onToggleHandTracking={handleToggleHandTracking}
+          onToggleStt={() => setIsSttEnabled((prev) => !prev)}
+          onRequestSwitchRole={() => setIsRoleModalOpen(true)}
+          onToggleChat={handleToggleChat}
+          onTogglePeople={handleTogglePeople}
+          onResetPin={handleResetPin}
+          onLeaveRoom={handleLeave}
+        />
+      </div>
 
       {/* In-Room Role Switch Modal */}
       <RolePromptModal

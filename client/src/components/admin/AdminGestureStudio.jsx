@@ -531,9 +531,9 @@ export default function AdminGestureStudio({ onBackToApp }) {
   if (!isAuthenticated) {
     return (
       <div className="w-screen h-screen bg-[#0F1015] text-white flex items-center justify-center p-4 font-sans select-none">
-        <div className="w-full max-w-md bg-[#181920] border border-slate-800 rounded-3xl p-8 shadow-2xl space-y-6">
+        <div className="w-full max-w-md bg-[#181920] border border-slate-800 rounded-xl p-8 shadow-2xl space-y-6">
           <div className="text-center space-y-2">
-            <div className="w-14 h-14 rounded-2xl bg-blue-600/20 text-blue-400 flex items-center justify-center mx-auto border border-blue-500/30">
+            <div className="w-14 h-14 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center mx-auto border border-blue-500/30">
               <ShieldCheck className="w-7 h-7" />
             </div>
             <h1 className="text-xl font-bold tracking-tight">Admin ASL Studio</h1>
@@ -559,7 +559,7 @@ export default function AdminGestureStudio({ onBackToApp }) {
                   value={adminKey}
                   onChange={(e) => setAdminKey(e.target.value)}
                   placeholder="Enter secret key..."
-                  className="w-full bg-[#20222A] border border-slate-700/80 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors pl-10"
+                  className="w-full bg-[#20222A] border border-slate-700/80 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors pl-10"
                 />
                 <Key className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
               </div>
@@ -570,7 +570,7 @@ export default function AdminGestureStudio({ onBackToApp }) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors shadow-lg disabled:opacity-50"
+              className="w-full py-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors shadow-lg disabled:opacity-50"
             >
               {loading ? 'Authenticating...' : 'Access Admin Studio'}
             </button>
@@ -665,7 +665,7 @@ export default function AdminGestureStudio({ onBackToApp }) {
         <div className="flex-1 w-full grid grid-cols-12 gap-6 p-6 overflow-hidden min-h-0">
           {/* Left Stage: Live Camera Feed & Landmark Recorder */}
           <div className="col-span-7 flex flex-col gap-4 h-full min-h-0">
-            <div className={`relative flex-1 bg-slate-950 rounded-2xl overflow-hidden border transition-all flex items-center justify-center ${
+            <div className={`relative flex-1 bg-slate-950 rounded-xl overflow-hidden border transition-all flex items-center justify-center ${
               isRecording ? 'border-rose-500 shadow-[0_0_25px_rgba(244,63,94,0.4)]' : 'border-slate-800'
             }`}>
               <video
@@ -722,7 +722,7 @@ export default function AdminGestureStudio({ onBackToApp }) {
               {/* Bottom Live Subtitle UI Overlay */}
               {cameraActive && showSubtitles && (
                 <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 w-[90%] max-w-lg pointer-events-auto transition-all">
-                  <div className="bg-slate-950/90 backdrop-blur-xl border border-blue-500/40 shadow-[0_8px_32px_rgba(0,0,0,0.6)] rounded-2xl p-3.5 text-center space-y-1.5">
+                  <div className="bg-slate-950/90 backdrop-blur-xl border border-blue-500/40 shadow-[0_8px_32px_rgba(0,0,0,0.6)] rounded-xl p-3.5 text-center space-y-1.5">
                     <div className="flex items-center justify-center space-x-2 text-[11px] font-semibold uppercase tracking-wider text-blue-400">
                       <Sparkles className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
                       <span>Live AI Vision Subtitle</span>
@@ -755,7 +755,7 @@ export default function AdminGestureStudio({ onBackToApp }) {
                       <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping" />
                       <span>Recording 5s Two-Hand Sample...</span>
                     </div>
-                    <div className="w-12 h-12 rounded-2xl bg-rose-600/90 text-white font-extrabold text-2xl flex items-center justify-center shadow-2xl border border-rose-300/40 animate-pulse">
+                    <div className="w-12 h-12 rounded-xl bg-rose-600/90 text-white font-extrabold text-2xl flex items-center justify-center shadow-2xl border border-rose-300/40 animate-pulse">
                       {countdown}s
                     </div>
                   </div>
@@ -783,7 +783,7 @@ export default function AdminGestureStudio({ onBackToApp }) {
             </div>
 
             {/* Action Bar & Label Management */}
-            <div className="bg-[#181920] border border-slate-800 p-4 rounded-2xl space-y-3 shrink-0">
+            <div className="bg-[#181920] border border-slate-800 p-4 rounded-xl space-y-3 shrink-0">
               <div className="flex items-center space-x-3">
                 <div className="relative flex-1">
                   <input
@@ -838,7 +838,7 @@ export default function AdminGestureStudio({ onBackToApp }) {
           </div>
 
           {/* Right Stage: Active Supabase Gestures Roster */}
-          <div className="col-span-5 bg-[#181920] border border-slate-800 rounded-2xl p-4 flex flex-col h-full min-h-0">
+          <div className="col-span-5 bg-[#181920] border border-slate-800 rounded-xl p-4 flex flex-col h-full min-h-0">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
               <div>
                 <h2 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center space-x-2">
@@ -945,7 +945,7 @@ export default function AdminGestureStudio({ onBackToApp }) {
       {activeTab === 'phrases' && (
         <div className="flex-1 w-full grid grid-cols-12 gap-6 p-6 overflow-hidden min-h-0">
           {/* Left Form: Visual Rule Builder */}
-          <div className="col-span-5 bg-[#181920] border border-slate-800 rounded-2xl p-6 flex flex-col gap-5">
+          <div className="col-span-5 bg-[#181920] border border-slate-800 rounded-xl p-6 flex flex-col gap-5">
             <div>
               <div className="flex items-center justify-between mb-1">
                 <h2 className="text-sm font-bold text-white flex items-center space-x-2">
@@ -1130,7 +1130,7 @@ export default function AdminGestureStudio({ onBackToApp }) {
           </div>
 
           {/* Right Stage: Active Phrase Rules */}
-          <div className="col-span-7 bg-[#181920] border border-slate-800 rounded-2xl p-6 flex flex-col h-full min-h-0">
+          <div className="col-span-7 bg-[#181920] border border-slate-800 rounded-xl p-6 flex flex-col h-full min-h-0">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
               <div>
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center space-x-2">

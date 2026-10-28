@@ -34,7 +34,7 @@ export default function RolePromptModal({
       aria-modal="true"
       aria-labelledby="role-prompt-title"
     >
-      <div className="relative w-full max-w-lg bg-[#1e1f22] border border-white/10 rounded-2xl shadow-2xl p-6 sm:p-7 text-white">
+      <div className="relative w-full max-w-lg bg-[#1e1f22] border border-white/10 rounded-xl shadow-2xl p-6 sm:p-7 text-white">
         {/* Dismiss button if opened from in-room Switch Role */}
         {dismissible && onClose && (
           <button
@@ -70,13 +70,13 @@ export default function RolePromptModal({
             id="role-prompt-yes"
             type="button"
             onClick={() => handleSelect(ROLES.SIGNER)}
-            className={`flex flex-col items-center text-center p-4 sm:p-5 rounded-xl border transition-all duration-200 group ${
+            className={`flex flex-col items-center text-center p-4 sm:p-5 rounded-lg border transition-all duration-200 group ${
               currentRole === ROLES.SIGNER
                 ? 'bg-blue-600/20 border-blue-500 ring-2 ring-blue-500/30'
                 : 'bg-white/[0.04] border-white/10 hover:border-blue-400/50 hover:bg-blue-500/[0.08]'
             }`}
           >
-            <div className="w-12 h-12 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400 mb-3 group-hover:scale-105 transition-transform">
+            <div className="w-12 h-12 rounded-lg bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400 mb-3 group-hover:scale-105 transition-transform">
               <Hand size={24} />
             </div>
             <div className="text-base font-bold text-white mb-1">
@@ -95,13 +95,13 @@ export default function RolePromptModal({
             id="role-prompt-no"
             type="button"
             onClick={() => handleSelect(ROLES.NON_SIGNER)}
-            className={`flex flex-col items-center text-center p-4 sm:p-5 rounded-xl border transition-all duration-200 group ${
+            className={`flex flex-col items-center text-center p-4 sm:p-5 rounded-lg border transition-all duration-200 group ${
               currentRole === ROLES.NON_SIGNER
                 ? 'bg-emerald-600/20 border-emerald-500 ring-2 ring-emerald-500/30'
                 : 'bg-white/[0.04] border-white/10 hover:border-emerald-400/50 hover:bg-emerald-500/[0.08]'
             }`}
           >
-            <div className="w-12 h-12 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mb-3 group-hover:scale-105 transition-transform">
+            <div className="w-12 h-12 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mb-3 group-hover:scale-105 transition-transform">
               <Mic size={24} />
             </div>
             <div className="text-base font-bold text-white mb-1">

@@ -10,9 +10,9 @@ import {
   BackNavIcon as ArrowLeft,
   SignGestureIcon as Hand,
 } from '../../icons';
-import { brandLogo } from '../../assets';
 import RolePromptModal from './RolePromptModal';
 import { ROLES, ROLE_META } from '../../constants/roles';
+import WindowControls from '../common/WindowControls';
 
 /**
  * Semantic Component: Google Meet Style Waiting Lobby
@@ -74,42 +74,63 @@ export default function WaitingLobby({
   // Bind localStream to video DOM element whenever Lobby mounts or stream updates
   useEffect(() => {
     const videoEl = videoRef.current;
-    if (videoEl && localStream) {
-      videoEl.srcObject = localStream;
+    if (videoEl && localStream && !isCameraOff) {
+      if (videoEl.srcObject !== localStream) {
+        videoEl.srcObject = localStream;
+      }
       videoEl.play().catch((err) => {
         console.warn('Lobby video stream autoplay:', err);
       });
     }
   }, [localStream, videoRef, isCameraOff]);
 
-  return (
-    <div className="w-screen h-screen bg-white text-slate-900 flex flex-col justify-between p-6 md:p-10 font-sans select-none overflow-hidden">
-      {/* Top Bar Navigation */}
-      <header className="w-full max-w-6xl mx-auto flex items-center justify-between z-10">
-        <button
-          onClick={onBackHome}
-          className="flex items-center space-x-2 text-slate-700 hover:text-slate-900 text-xs font-semibold px-4 py-2.5 rounded-full bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-all shadow-xs outline-none focus:outline-none cursor-pointer"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Back to Home</span>
-        </button>
+  
 
-        <div className="flex items-center">
-          <img
-            src={brandLogo}
-            alt="SLMeet Logo"
-            className="h-10 md:h-12 lg:h-14 w-auto object-contain filter drop-shadow-xs"
-          />
+  return (
+    <div className="w-screen h-screen overflow-hidden bg-[#EAECEE] text-slate-900 flex flex-col font-sans select-none">
+      {/* 1. Custom Frameless Window TitleBar (Zoom Workplace Style) */}
+      <header
+        onDoubleClick={() => window.electronAPI?.toggleMaximize?.()}
+        style={{ WebkitAppRegion: 'drag' }}
+        data-tauri-drag-region="true"
+        className="w-full h-12 pl-4 md:pl-5 pr-3 flex items-center justify-between z-30 shrink-0 select-none bg-transparent"
+      >
+        {/* Top-Left: Navigation */}
+        <div
+          style={{ WebkitAppRegion: 'no-drag' }}
+          className="flex items-center"
+        >
+          {onBackHome && (
+            <button
+              onClick={onBackHome}
+              className="flex items-center space-x-1.5 text-slate-700 hover:text-slate-900 text-xs font-semibold px-3 py-1.5 rounded-lg bg-white/80 hover:bg-white border border-slate-200/80 transition-all shadow-2xs outline-none cursor-pointer"
+              title="Return to home"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back to Home</span>
+            </button>
+          )}
+        </div>
+
+        {/* Top-Right: Window Controls (IPC) */}
+        <div
+          style={{ WebkitAppRegion: 'no-drag' }}
+          className="flex items-center h-full space-x-2.5"
+        >
+          <WindowControls />
         </div>
       </header>
 
-      {/* Main Content Grid: Preview Left + Device Config Right */}
-      <main className="w-full flex-1 max-w-6xl mx-auto flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-14 my-auto py-4">
+      {/* 2. Main Window Container Card */}
+      <div className="flex-1 flex overflow-hidden px-3 pb-3 pt-1">
+        <div className="flex-1 bg-white rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-center overflow-y-auto p-4 sm:p-6 md:p-8 lg:p-10 relative">
+          {/* Main Content Grid: Preview Left + Device Config Right */}
+          <main className="w-full flex-1 max-w-5xl mx-auto flex flex-col lg:flex-row items-center justify-center gap-6 lg:gap-10 my-auto py-2">
         {/* Left Side: Large Camera Video Preview */}
         <div className="w-full lg:w-[58%] flex flex-col items-center">
           <div
-            className={`relative w-full aspect-video rounded-3xl overflow-hidden bg-slate-900 shadow-2xl flex items-center justify-center box-border transition-all ${
-              isSpeaking ? 'ring-4 ring-[#5CA0F2]/80 border-transparent' : 'border border-slate-200'
+            className={`relative w-full aspect-video rounded-xl overflow-hidden flex items-center justify-center ${
+              isCameraOff ? 'bg-slate-900' : 'bg-transparent'
             }`}
           >
             {/* Live Local Video Feed */}
@@ -118,7 +139,7 @@ export default function WaitingLobby({
               autoPlay
               playsInline
               muted
-              className={`w-full h-full object-cover transform -scale-x-100 ${
+              className={`absolute inset-0 w-full h-full object-cover rounded-xl transform -scale-x-100 ${
                 isCameraOff ? 'hidden' : 'block'
               }`}
             />
@@ -161,6 +182,15 @@ export default function WaitingLobby({
                 {isCameraOff ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
               </button>
             </div>
+
+            {/* Zoom-Style Solid Active Speaker Border Overlay (Always on top) */}
+            <div
+              className={`absolute inset-0 rounded-xl pointer-events-none z-20 transition-colors duration-150 border-[3px] ${
+                isSpeaking && !isMuted
+                  ? 'border-[#22C55E]'
+                  : 'border-slate-200'
+              }`}
+            />
           </div>
         </div>
 
@@ -174,7 +204,7 @@ export default function WaitingLobby({
           </div>
 
           {/* User Display Name Input Field */}
-          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1.5">
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-xs space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="text-xs font-semibold text-slate-700 flex items-center space-x-1.5">
                 <User className="w-3.5 h-3.5 text-[#5CA0F2]" />
@@ -196,7 +226,7 @@ export default function WaitingLobby({
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleJoinClick();
               }}
-              className={`w-full bg-white text-slate-800 text-xs rounded-xl px-3.5 py-2.5 border transition-colors focus:outline-none ${
+              className={`w-full bg-white text-slate-800 text-xs rounded-lg px-3.5 py-2.5 border transition-colors focus:outline-none ${
                 nameError ? 'border-red-400 focus:border-red-500' : 'border-slate-300 focus:border-[#5CA0F2]'
               }`}
             />
@@ -207,7 +237,7 @@ export default function WaitingLobby({
             {/* Selected Role Chip / Re-trigger Modal */}
             <div className="pt-2">
               {selectedRole ? (
-                <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-100 border border-slate-200">
+                <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-100 border border-slate-200">
                   <div className="flex items-center space-x-2">
                     <span className="p-1 rounded-lg bg-blue-500/10 text-[#5CA0F2]">
                       {selectedRole === ROLES.SIGNER ? <Hand size={15} /> : <Mic size={15} />}
@@ -233,7 +263,7 @@ export default function WaitingLobby({
                 <button
                   type="button"
                   onClick={() => setIsRoleModalOpen(true)}
-                  className="w-full text-xs text-blue-600 font-semibold p-2.5 rounded-xl border border-dashed border-blue-300 bg-blue-50/50 hover:bg-blue-50 text-center transition-colors"
+                  className="w-full text-xs text-blue-600 font-semibold p-2.5 rounded-lg border border-dashed border-blue-300 bg-blue-50/50 hover:bg-blue-50 text-center transition-colors"
                 >
                   Click to select your communication role (Required)
                 </button>
@@ -242,7 +272,7 @@ export default function WaitingLobby({
           </div>
 
           {/* Hardware Device Configuration Options */}
-          <div className="bg-slate-50 p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+          <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
             {/* Camera Input Selector */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-700 flex items-center space-x-2">
@@ -252,7 +282,7 @@ export default function WaitingLobby({
               <select
                 value={selectedVideoDeviceId}
                 onChange={(e) => changeVideoDevice(e.target.value)}
-                className="w-full bg-white text-slate-800 text-xs rounded-xl px-3.5 py-2.5 border border-slate-300 focus:outline-none focus:border-[#5CA0F2] shadow-xs cursor-pointer"
+                className="w-full bg-white text-slate-800 text-xs rounded-lg px-3.5 py-2.5 border border-slate-300 focus:outline-none focus:border-[#5CA0F2] shadow-xs cursor-pointer"
               >
                 {videoDevices.map((device, index) => (
                   <option key={device.deviceId || index} value={device.deviceId}>
@@ -271,7 +301,7 @@ export default function WaitingLobby({
               <select
                 value={selectedAudioDeviceId}
                 onChange={(e) => changeAudioDevice(e.target.value)}
-                className="w-full bg-white text-slate-800 text-xs rounded-xl px-3.5 py-2.5 border border-slate-300 focus:outline-none focus:border-[#5CA0F2] shadow-xs cursor-pointer"
+                className="w-full bg-white text-slate-800 text-xs rounded-lg px-3.5 py-2.5 border border-slate-300 focus:outline-none focus:border-[#5CA0F2] shadow-xs cursor-pointer"
               >
                 {audioDevices.map((device, index) => (
                   <option key={device.deviceId || index} value={device.deviceId}>
@@ -291,7 +321,7 @@ export default function WaitingLobby({
                 <select
                   value={selectedSpeakerDeviceId}
                   onChange={(e) => changeSpeakerDevice(e.target.value)}
-                  className="w-full bg-white text-slate-800 text-xs rounded-xl px-3.5 py-2.5 border border-slate-300 focus:outline-none focus:border-[#5CA0F2] shadow-xs cursor-pointer"
+                  className="w-full bg-white text-slate-800 text-xs rounded-lg px-3.5 py-2.5 border border-slate-300 focus:outline-none focus:border-[#5CA0F2] shadow-xs cursor-pointer"
                 >
                   {speakerDevices.map((device, index) => (
                     <option key={device.deviceId || index} value={device.deviceId}>
@@ -306,7 +336,7 @@ export default function WaitingLobby({
           {/* Join Meeting Action Button */}
           <button
             onClick={handleJoinClick}
-            className={`w-full font-bold text-sm py-3.5 rounded-2xl shadow-md transition-all outline-none focus:outline-none cursor-pointer ${
+            className={`w-full font-bold text-sm py-3.5 rounded-lg shadow-md transition-all outline-none focus:outline-none cursor-pointer ${
               selectedRole
                 ? 'bg-[#5CA0F2] hover:bg-[#4A8FE0] text-white'
                 : 'bg-slate-300 text-slate-600 hover:bg-slate-400'
@@ -316,6 +346,8 @@ export default function WaitingLobby({
           </button>
         </div>
       </main>
+    </div>
+  </div>
 
       {/* Mandatory Role Prompt Modal */}
       <RolePromptModal

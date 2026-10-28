@@ -54,5 +54,12 @@ export function useCaptionPrefs() {
     } catch {}
   }, []);
 
-  return [prefs, setPrefs, resetPrefs];
+  // Return dual compatibility: supports both object destructuring { prefs, updatePref, resetPrefs }
+  // and array destructuring [prefs, setPrefs, resetPrefs]
+  const result = [prefs, setPrefs, resetPrefs];
+  result.prefs = prefs;
+  result.setPrefs = setPrefs;
+  result.updatePref = setPrefs;
+  result.resetPrefs = resetPrefs;
+  return result;
 }

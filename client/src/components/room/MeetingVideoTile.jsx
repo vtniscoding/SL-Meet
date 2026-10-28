@@ -17,7 +17,7 @@ export default function MeetingVideoTile({
   isPinned,
   onTogglePin,
   isAiEnabled,
-  isHandTrackingEnabled = true,
+  isHandTrackingEnabled = false,
   subtitleText,
   captionData,
   onRegisterCanvas,
@@ -66,14 +66,11 @@ export default function MeetingVideoTile({
     };
   }, [isLocal, isScreenSharing, onRegisterCanvas]);
 
+  const cleanName = (name || '').replace(/\s*\(You\)/i, '').replace(/\s*\(Presentation\)/i, '').trim();
+  const initialLetter = cleanName ? cleanName.charAt(0).toUpperCase() : 'U';
+
   return (
-    <div
-      className={`relative w-full h-full rounded-2xl overflow-hidden bg-slate-900 transition-all duration-200 group flex items-center justify-center box-border ${
-        isSpeaking
-          ? 'border-2 border-[#5CA0F2]'
-          : 'border border-slate-800/80'
-      }`}
-    >
+    <div className="relative w-full h-full rounded-lg overflow-hidden bg-slate-900 group flex items-center justify-center">
       {/* Video Stream Element */}
       <video
         ref={tileVideoRef}
@@ -105,43 +102,46 @@ export default function MeetingVideoTile({
         />
       )}
 
-      {/* Camera Off Avatar Fallback */}
+      {/* Camera Off Avatar Fallback (Zoom-Style: Profile Avatar with Gray Background) */}
       {!isScreenSharing && (isCameraOff || (!isLocal && (!hasStream || !hasLiveVideo))) && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 text-slate-400 space-y-3 p-4">
-          <div className="w-20 h-20 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center shadow-inner">
-            <User className="w-10 h-10 text-slate-400" />
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#202124] text-slate-300 p-2 sm:p-4 space-y-1 sm:space-y-2 select-none">
+          {/* Centered Circular Profile Avatar with Neutral Gray Background */}
+          <div className="w-11 h-11 sm:w-16 sm:h-16 md:w-20 md:h-20 aspect-square shrink-0 rounded-full bg-[#3C4043] border border-white/10 flex items-center justify-center text-white text-base sm:text-xl md:text-2xl font-semibold shadow-inner select-none">
+            {initialLetter || <User className="w-5 h-5 sm:w-8 sm:h-8 text-slate-300" />}
           </div>
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 bg-slate-900 px-3 py-1 rounded-full border border-slate-800">
-            {name}{' '}
-            {!hasStream
-              ? '(Connecting...)'
-              : !hasLiveVideo
-              ? '(Audio Only)'
-              : isCameraOff
-              ? '(Camera Off)'
-              : ''}
-          </span>
+          {!hasStream && !isLocal && (
+            <span className="text-[10px] sm:text-[11px] text-slate-400 font-medium truncate max-w-[90%]">Connecting...</span>
+          )}
         </div>
       )}
 
-      {/* Participant Name Badge & Mute Indicator */}
-      <div className="absolute top-4 left-4 z-20 bg-black/60 backdrop-blur-md text-white px-3 py-1.5 rounded-lg text-xs font-medium border border-white/10 flex items-center space-x-2">
-        <span>{name}</span>
-        {isMuted && <MicOff className="w-3.5 h-3.5 text-rose-400" />}
+      {/* Zoom-Style Solid Active Speaker Border Overlay (Always on top of video, never covered) */}
+      <div
+        className={`absolute inset-0 rounded-lg pointer-events-none z-20 transition-colors duration-150 border-[3px] ${
+          isSpeaking && !isMuted
+            ? 'border-[#22C55E]'
+            : 'border-white/10'
+        }`}
+      />
+
+      {/* Participant Name Tag (Zoom-Style: Bottom-Left, Basic White Text on Black Background) */}
+      <div className="absolute bottom-2.5 left-2.5 z-20 bg-black/75 backdrop-blur-xs text-white px-2 py-0.5 rounded text-[12px] font-normal flex items-center space-x-1.5 select-none pointer-events-none">
+        <span className="truncate max-w-[140px] sm:max-w-[180px]">{name}</span>
+        {isMuted && <MicOff className="w-3.5 h-3.5 text-rose-500 shrink-0" />}
       </div>
 
       {/* Pin / Unpin Button Overlay */}
-      <div className="absolute top-4 right-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+      <div className="absolute top-2.5 right-2.5 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
         <button
           onClick={() => onTogglePin(id)}
-          className={`p-2 rounded-xl backdrop-blur-md border transition-all outline-none focus:outline-none ${
+          className={`p-1.5 rounded-md backdrop-blur-md border transition-all outline-none focus:outline-none cursor-pointer ${
             isPinned
               ? 'bg-[#8AB4F8] text-[#202124] border-transparent opacity-100 shadow-md'
               : 'bg-black/60 text-slate-300 border-white/15 hover:bg-black/80 hover:text-white'
           }`}
           title={isPinned ? 'Unpin stream' : 'Pin stream'}
         >
-          {isPinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+          {isPinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
         </button>
       </div>
     </div>

@@ -25,7 +25,7 @@ export default function SocketControls({
   return (
     <div className="w-full lg:w-96 flex flex-col space-y-4">
       {/* Socket Configuration Card */}
-      <div className="p-4 rounded-2xl glass-card border border-slate-800/90 shadow-xl space-y-4">
+      <div className="p-4 rounded-xl glass-card border border-slate-800/90 shadow-xl space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Server className="w-4 h-4 text-indigo-400" />
@@ -117,7 +117,7 @@ export default function SocketControls({
       </div>
 
       {/* Terminal Log Console */}
-      <div className="flex-1 flex flex-col p-4 rounded-2xl glass-card border border-slate-800/90 shadow-xl overflow-hidden min-h-[220px]">
+      <div className="flex-1 flex flex-col p-4 rounded-xl glass-card border border-slate-800/90 shadow-xl overflow-hidden min-h-[220px]">
         <div className="flex items-center space-x-2 mb-2 pb-2 border-b border-slate-800">
           <Terminal className="w-4 h-4 text-cyan-400" />
           <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Socket Event Stream</span>

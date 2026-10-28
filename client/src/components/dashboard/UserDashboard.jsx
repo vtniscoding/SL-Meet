@@ -223,7 +223,7 @@ export default function UserDashboard({
 
             {/* Profile Dropdown Menu */}
             {isMenuOpen && (
-              <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 p-3.5 z-50 animate-in fade-in duration-150">
+              <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 p-3.5 z-50 animate-in fade-in duration-150">
                 <div className="flex items-center space-x-3 pb-3 border-b border-slate-100">
                   <div className="w-10 h-10 rounded-full bg-[#5CA0F2] text-white font-bold text-sm flex items-center justify-center shrink-0">
                     {userInitial}
@@ -240,7 +240,7 @@ export default function UserDashboard({
                       setIsMenuOpen(false);
                       onSignOut();
                     }}
-                    className="w-full flex items-center space-x-2.5 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-xl transition-colors cursor-pointer outline-none"
+                    className="w-full flex items-center space-x-2.5 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer outline-none"
                   >
                     <LogOut className="w-4 h-4 shrink-0" />
                     <span>Log Out</span>
@@ -316,7 +316,7 @@ export default function UserDashboard({
         </aside>
 
         {/* DOCK 1: Main Action Zone (White Card, Flex-1, Stretches/Shrinks) */}
-        <section className="flex-1 bg-white rounded-2xl border border-slate-200/80 shadow-xs p-8 md:p-12 lg:p-16 flex flex-col justify-center overflow-y-auto">
+        <section className="flex-1 bg-white rounded-xl border border-slate-200/80 shadow-xs p-8 md:p-12 lg:p-16 flex flex-col justify-center overflow-y-auto">
           <div className="max-w-xl space-y-6">
             <div>
               <h1 className="text-xl sm:text-2xl md:text-[26px] font-bold text-slate-900 tracking-tight leading-tight">
@@ -376,7 +376,7 @@ export default function UserDashboard({
 
             {/* Error Message Feedback */}
             {codeError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-center space-x-2 text-xs text-red-600">
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center space-x-2 text-xs text-red-600">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{codeError}</span>
               </div>
@@ -385,9 +385,9 @@ export default function UserDashboard({
         </section>
 
         {/* DOCK 2: Right Panel (White Card, Fixed Width ~400-430px) */}
-        <section className="w-[380px] lg:w-[410px] xl:w-[430px] shrink-0 bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 md:p-6 flex flex-col h-full overflow-hidden relative">
+        <section className="w-[380px] lg:w-[410px] xl:w-[430px] shrink-0 bg-white rounded-xl border border-slate-200/80 shadow-xs p-5 md:p-6 flex flex-col h-full overflow-hidden relative">
           {/* Live Date & Time Widget Card (Zoom Workplace style) */}
-          <div className="w-full bg-gradient-to-br from-[#1E293B] to-[#0F172A] text-white rounded-2xl p-5 shadow-sm relative overflow-hidden shrink-0">
+          <div className="w-full bg-gradient-to-br from-[#1E293B] to-[#0F172A] text-white rounded-xl p-5 shadow-sm relative overflow-hidden shrink-0">
             <div className="relative z-10">
               <div className="text-3xl font-extrabold tracking-tight">
                 {formattedTime}
@@ -401,7 +401,7 @@ export default function UserDashboard({
           </div>
 
           {/* Sub-Dock Container: Recent Rooms (Bo tròn linh hoạt, tự động cuộn khi mở rộng) */}
-          <div className="flex-1 flex flex-col my-3 min-h-0 bg-slate-50/70 rounded-2xl border border-slate-200/80 p-3.5 overflow-hidden">
+          <div className="flex-1 flex flex-col my-3 min-h-0 bg-slate-50/70 rounded-xl border border-slate-200/80 p-3.5 overflow-hidden">
             {/* Sub-Dock Header */}
             <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-200/60 shrink-0">
               <div className="flex items-center space-x-1.5 text-xs font-bold text-slate-800">

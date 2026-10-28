@@ -9,15 +9,10 @@ import {
   HandTrackingOnIcon as Eye,
   HandTrackingOffIcon as EyeOff,
   ScreenShareIcon as Monitor,
-  TiledLayoutIcon as Grid,
-  SidebarLayoutIcon as Columns,
-  SpotlightLayoutIcon as Maximize2,
   UnpinIcon as PinOff,
   MoreOptionsIcon as MoreVertical,
-  CheckmarkIcon as Check,
   ChatDrawerIcon as MessageSquare,
   ParticipantsDrawerIcon as Users,
-  DownloadTranscriptIcon as Download,
   RoleAssignedIcon as UserCheck,
 } from '../../icons';
 
@@ -49,8 +44,6 @@ export default function MeetingControlBar({
   onRequestSwitchRole,
   onToggleChat,
   onTogglePeople,
-  onChangeLayout,
-  onExportTranscript,
   onResetPin,
   onLeaveRoom,
 }) {
@@ -70,13 +63,6 @@ export default function MeetingControlBar({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const handleSelectLayout = (mode) => {
-    if (onChangeLayout) {
-      onChangeLayout(mode);
-    }
-    setShowMoreMenu(false);
-  };
 
   return (
     <footer className="w-full flex items-center justify-between pt-2 z-30 relative select-none">
@@ -135,7 +121,7 @@ export default function MeetingControlBar({
           <Monitor className="w-5 h-5" />
         </button>
 
-        {/* SL (Sign Language Translation) Toggle Button (Non-Signers only) */}
+        {/* Subtitles (CC) Toggle Button (Non-Signers) */}
         {userRole !== 'signer' && (
           <button
             onClick={onToggleAi}
@@ -144,10 +130,10 @@ export default function MeetingControlBar({
                 ? 'bg-[#8AB4F8] text-[#202124]'
                 : 'bg-[#3C4043] hover:bg-[#474B4F] text-slate-300'
             }`}
-            title={isAiEnabled ? 'Turn OFF SL Subtitles' : 'Turn ON SL Subtitles'}
+            title={isAiEnabled ? 'Turn OFF Subtitles' : 'Turn ON Subtitles'}
           >
             <Captions className="w-5 h-5" />
-            <span>SL</span>
+            <span>CC</span>
           </button>
         )}
 
@@ -179,8 +165,8 @@ export default function MeetingControlBar({
               sttStatus === 'loading'
                 ? 'Loading Whisper AI model...'
                 : isSttEnabled
-                ? 'Turn OFF Live Voice Captions'
-                : 'Turn ON Live Voice Captions'
+                ? 'Turn OFF Subtitles'
+                : 'Turn ON Subtitles'
             }
           >
             {sttStatus === 'loading' ? (
@@ -191,9 +177,7 @@ export default function MeetingControlBar({
             <span>
               {sttStatus === 'loading'
                 ? 'Loading...'
-                : isSttEnabled
-                ? 'Captions ON'
-                : 'Captions'}
+                : 'CC'}
             </span>
           </button>
         )}
@@ -245,85 +229,12 @@ export default function MeetingControlBar({
             )}
           </button>
 
-          {/* 3-Dots More Options Menu Button & Layout Selector Popup */}
+          {/* 3-Dots More Options Menu Button */}
           <div className="relative" ref={menuRef}>
             {showMoreMenu && (
-              <div className="absolute bottom-14 right-0 w-60 bg-[#28292C] rounded-2xl p-2 shadow-2xl z-50 text-slate-200 text-xs font-medium space-y-1 outline-none focus:outline-none border border-slate-700/60">
-                <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-700/50">
-                  Change layout
-                </div>
-
-                {/* Option 1: Tiled View */}
-                <button
-                  onClick={() => handleSelectLayout('tiled')}
-                  className={`w-full px-3 py-2 rounded-xl flex items-center justify-between transition-colors outline-none focus:outline-none ${
-                    layoutMode === 'tiled' ? 'bg-[#3C4043] text-white font-semibold' : 'hover:bg-[#35373A] text-slate-300'
-                  }`}
-                >
-                  <div className="flex items-center space-x-3">
-                    <Grid className="w-4 h-4 text-slate-300" />
-                    <span>Tiled View</span>
-                  </div>
-                  {layoutMode === 'tiled' && <Check className="w-4 h-4 text-blue-400" />}
-                </button>
-
-                {/* Option 2: Sidebar View */}
-                <button
-                  onClick={() => handleSelectLayout('sidebar')}
-                  className={`w-full px-3 py-2 rounded-xl flex items-center justify-between transition-colors outline-none focus:outline-none ${
-                    layoutMode === 'sidebar' ? 'bg-[#3C4043] text-white font-semibold' : 'hover:bg-[#35373A] text-slate-300'
-                  }`}
-                >
-                  <div className="flex items-center space-x-3">
-                    <Columns className="w-4 h-4 text-slate-300" />
-                    <span>Sidebar View</span>
-                  </div>
-                  {layoutMode === 'sidebar' && <Check className="w-4 h-4 text-blue-400" />}
-                </button>
-
-                {/* Option 3: Spotlight View */}
-                <button
-                  onClick={() => handleSelectLayout('spotlight')}
-                  className={`w-full px-3 py-2 rounded-xl flex items-center justify-between transition-colors outline-none focus:outline-none ${
-                    layoutMode === 'spotlight' ? 'bg-[#3C4043] text-white font-semibold' : 'hover:bg-[#35373A] text-slate-300'
-                  }`}
-                >
-                  <div className="flex items-center space-x-3">
-                    <Maximize2 className="w-4 h-4 text-slate-300" />
-                    <span>Spotlight View</span>
-                  </div>
-                  {layoutMode === 'spotlight' && <Check className="w-4 h-4 text-blue-400" />}
-                </button>
-
-                <div className="border-t border-slate-700/50 my-1 pt-1 space-y-1">
-                  {/* Option 4: Switch Role */}
-                  <button
-                    onClick={() => {
-                      if (onRequestSwitchRole) onRequestSwitchRole();
-                      setShowMoreMenu(false);
-                    }}
-                    className="w-full px-3 py-2 rounded-xl flex items-center space-x-3 hover:bg-[#35373A] text-slate-300 transition-colors outline-none focus:outline-none"
-                    title="Change your communication role"
-                  >
-                    <UserCheck className="w-4 h-4 text-emerald-400" />
-                    <span>Switch Role ({userRole === 'signer' ? 'Signer' : 'Speaker'})</span>
-                  </button>
-
-                  {/* Option 5: Export Transcript */}
-                  <button
-                    onClick={() => {
-                      if (onExportTranscript) onExportTranscript();
-                      setShowMoreMenu(false);
-                    }}
-                    className="w-full px-3 py-2 rounded-xl flex items-center space-x-3 hover:bg-[#35373A] text-slate-300 transition-colors outline-none focus:outline-none"
-                    title="Export meeting transcript as .txt file"
-                  >
-                    <Download className="w-4 h-4 text-blue-400" />
-                    <span>Export Transcript</span>
-                  </button>
-                </div>
+              <div className="absolute bottom-14 right-0 w-48 bg-[#28292C] rounded-xl p-3 shadow-2xl z-50 text-slate-400 text-xs text-center border border-white/10 select-none">
+                More options coming soon
               </div>
-
             )}
 
             <button
@@ -333,7 +244,7 @@ export default function MeetingControlBar({
                   ? 'bg-[#474B4F] text-white'
                   : 'bg-[#3C4043] hover:bg-[#474B4F] text-slate-200'
               }`}
-              title="More options (Change layout)"
+              title="More options"
             >
               <MoreVertical className="w-4 h-4" />
             </button>

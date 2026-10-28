@@ -58,6 +58,7 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
         setSpeechCaptions((prev) => ({
           ...prev,
           [data.senderId]: {
+            senderId: data.senderId,
             text: data.text,
             isFinal: !!data.isFinal,
             senderName: data.senderName,
@@ -199,6 +200,7 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
           isMuted: !!data.isMuted,
           isCameraOff: !!data.isCameraOff,
           isAiVisionActive: !!data.isAiVisionActive,
+          isSpeaking: !!data.isSpeaking,
         },
       }));
     };
@@ -314,7 +316,7 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
     }
   };
 
-  const sendMediaStatusChange = (isMuted, isCameraOff, isAiVisionActive) => {
+  const sendMediaStatusChange = (isMuted, isCameraOff, isAiVisionActive, isSpeaking = false) => {
     const socket = getSocket(serverUrl);
     if (socket.connected && currentRoom) {
       socket.emit('media_status_change', {
@@ -322,6 +324,7 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
         isMuted: !!isMuted,
         isCameraOff: !!isCameraOff,
         isAiVisionActive: !!isAiVisionActive,
+        isSpeaking: !!isSpeaking,
       });
     }
   };

@@ -2,15 +2,18 @@ import React, { useEffect, useRef } from 'react';
 import {
   CloseIcon as X,
   ResetSettingsIcon as RotateCcw,
-  TextFontIcon as Type,
-  HandTrackingOnIcon as Eye,
-  TextAlignLeftIcon as AlignLeft,
+  TtFontSizeIcon,
 } from '../../../icons';
+import { CAPTION_CONFIG } from '../../../config/captionConfig';
 
 /**
  * CaptionSettingsPopover Component:
- * Instant customization popover for Caption Dock (Font Size, Rows, Opacity, Show Names).
- * Closes on Esc or outside click.
+ * Instant font size customization popover for Caption Dock.
+ * Features:
+ * - Medium (20px), Large (24px - Default), X-Large (28px).
+ * - Live preview of the caption text size.
+ * - Floating cleanly above the caption bar.
+ * - Closes on Esc or outside click.
  */
 export default function CaptionSettingsPopover({
   isOpen = false,
@@ -48,135 +51,79 @@ export default function CaptionSettingsPopover({
 
   if (!isOpen) return null;
 
+  const currentSizeKey = prefs.size || 'l';
+  const previewFontSizePx = CAPTION_CONFIG.SIZES_PX[currentSizeKey] || CAPTION_CONFIG.SIZES_PX.l;
+
   return (
     <div
       ref={popoverRef}
-      className="absolute bottom-16 right-0 z-50 w-72 sm:w-80 p-4 rounded-2xl bg-[#202124] border border-white/10 shadow-2xl text-white select-none transition-all duration-150 animate-in fade-in slide-in-from-bottom-2"
+      className="absolute bottom-full mb-2 right-2 z-50 w-72 sm:w-80 p-3.5 rounded-xl bg-[#202124] border border-white/15 shadow-2xl text-white select-none transition-all duration-150 animate-in fade-in slide-in-from-bottom-2"
     >
       {/* Header */}
-      <div className="flex items-center justify-between pb-3 border-b border-white/10">
-        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">
-          Caption Preferences
-        </h4>
+      <div className="flex items-center justify-between pb-2.5 border-b border-white/10">
+        <div className="flex items-center space-x-1.5">
+          <TtFontSizeIcon className="w-4 h-4 text-[#8AB4F8]" />
+          <h4 className="text-xs font-semibold tracking-wide text-slate-200">
+            Caption Font Size
+          </h4>
+        </div>
         <button
           onClick={onClose}
           className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
           title="Close"
           aria-label="Close preferences"
         >
-          <X className="w-4 h-4" />
+          <X className="w-3.5 h-3.5" />
         </button>
       </div>
 
-      <div className="space-y-4 pt-3.5 text-xs">
-        {/* Font Size Selection */}
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between text-slate-300 font-medium">
-            <span className="flex items-center space-x-1.5">
-              <Type className="w-3.5 h-3.5 text-[#8AB4F8]" />
-              <span>Font Size</span>
-            </span>
-            <span className="text-[11px] text-slate-400 uppercase">
-              {prefs.size === 'm' ? 'Medium (20px)' : prefs.size === 'xl' ? 'Extra Large (28px)' : 'Large (24px)'}
-            </span>
-          </div>
-          <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-black/40 border border-white/5">
-            {[
-              { id: 'm', label: 'Medium' },
-              { id: 'l', label: 'Large' },
-              { id: 'xl', label: 'X-Large' },
-            ].map((s) => (
-              <button
-                key={s.id}
-                onClick={() => onPrefsChange({ size: s.id })}
-                className={`py-1.5 rounded-lg font-medium transition-all ${
-                  prefs.size === s.id
-                    ? 'bg-[#8AB4F8] text-[#202124] shadow-sm font-semibold'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Rows Selection */}
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between text-slate-300 font-medium">
-            <span className="flex items-center space-x-1.5">
-              <AlignLeft className="w-3.5 h-3.5 text-[#8AB4F8]" />
-              <span>Visible Lines</span>
-            </span>
-            <span className="text-[11px] text-slate-400">{prefs.rows || 3} lines</span>
-          </div>
-          <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-black/40 border border-white/5">
-            {[2, 3, 4].map((r) => (
-              <button
-                key={r}
-                onClick={() => onPrefsChange({ rows: r })}
-                className={`py-1.5 rounded-lg font-medium transition-all ${
-                  (prefs.rows || 3) === r
-                    ? 'bg-[#8AB4F8] text-[#202124] shadow-sm font-semibold'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                {r} Lines
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Background Opacity Slider */}
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between text-slate-300 font-medium">
-            <span className="flex items-center space-x-1.5">
-              <Eye className="w-3.5 h-3.5 text-[#8AB4F8]" />
-              <span>Background Opacity</span>
-            </span>
-            <span className="text-[11px] text-slate-400 font-mono">
-              {Math.round((prefs.opacity ?? 0.85) * 100)}%
-            </span>
-          </div>
-          <input
-            type="range"
-            min="0.6"
-            max="1.0"
-            step="0.05"
-            value={prefs.opacity ?? 0.85}
-            onChange={(e) => onPrefsChange({ opacity: parseFloat(e.target.value) })}
-            className="w-full accent-[#8AB4F8] cursor-pointer"
-          />
-        </div>
-
-        {/* Show Names Toggle */}
-        <div className="flex items-center justify-between pt-1">
-          <span className="text-slate-300 font-medium">Show speaker names</span>
-          <button
-            onClick={() => onPrefsChange({ showNames: !prefs.showNames })}
-            className={`w-10 h-5 rounded-full p-0.5 transition-colors ${
-              prefs.showNames !== false ? 'bg-[#8AB4F8]' : 'bg-[#3C4043]'
-            }`}
-            role="switch"
-            aria-checked={prefs.showNames !== false}
-            aria-label="Toggle speaker names"
-          >
-            <div
-              className={`w-4 h-4 rounded-full bg-white transition-transform ${
-                prefs.showNames !== false ? 'translate-x-5' : 'translate-x-0'
+      <div className="space-y-3 pt-3 text-xs">
+        {/* Font Size Button Grid */}
+        <div className="grid grid-cols-3 gap-1.5 p-1 rounded-lg bg-black/40 border border-white/5">
+          {[
+            { id: 'm', label: 'Medium', desc: '20px' },
+            { id: 'l', label: 'Large', desc: '24px' },
+            { id: 'xl', label: 'X-Large', desc: '28px' },
+          ].map((s) => (
+            <button
+              key={s.id}
+              onClick={() => onPrefsChange?.({ size: s.id })}
+              className={`py-1.5 rounded-lg flex flex-col items-center justify-center transition-all ${
+                currentSizeKey === s.id
+                  ? 'bg-[#8AB4F8] text-[#202124] shadow-sm font-semibold'
+                  : 'text-slate-300 hover:text-white hover:bg-white/10'
               }`}
-            />
-          </button>
+            >
+              <span className="font-medium text-xs">{s.label}</span>
+              <span className="text-[10px] opacity-75">{s.desc}</span>
+            </button>
+          ))}
         </div>
 
-        {/* Reset to Defaults */}
-        <div className="pt-2 border-t border-white/10 flex justify-end">
+        {/* Live Preview Box */}
+        <div className="p-2.5 rounded-lg bg-black/50 border border-white/10 flex flex-col justify-center min-h-[52px]">
+          <span className="text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">
+            Preview
+          </span>
+          <p
+            className="text-white leading-tight break-words transition-all duration-150"
+            style={{ fontSize: `${previewFontSizePx}px` }}
+          >
+            Sample caption text
+          </p>
+        </div>
+
+        {/* Footer: Reset to Defaults */}
+        <div className="pt-2 border-t border-white/10 flex items-center justify-between">
+          <span className="text-[11px] text-slate-400">
+            Default: Large (24px)
+          </span>
           <button
             onClick={onResetPrefs}
-            className="flex items-center space-x-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors py-1 px-2 rounded-lg hover:bg-white/5"
+            className="flex items-center space-x-1.5 text-xs text-slate-400 hover:text-white transition-colors py-1 px-2 rounded-lg hover:bg-white/10 cursor-pointer"
           >
-            <RotateCcw className="w-3 h-3" />
-            <span>Reset to defaults</span>
+            <RotateCcw className="w-3 h-3 text-slate-400" />
+            <span>Reset</span>
           </button>
         </div>
       </div>

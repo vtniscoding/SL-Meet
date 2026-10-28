@@ -93,7 +93,7 @@ export default function RoomHistoryCard({ room, onJoin, onRename, onDelete }) {
   return (
     <div
       onClick={() => !isEditing && onJoin(roomId)}
-      className={`w-full bg-white rounded-xl border border-slate-200/90 shadow-2xs hover:shadow-xs hover:border-[#5CA0F2]/50 transition-all p-3 flex flex-col space-y-2 group select-none ${
+      className={`w-full bg-white rounded-lg border border-slate-200/90 shadow-2xs hover:shadow-xs hover:border-[#5CA0F2]/50 transition-all p-3 flex flex-col space-y-2 group select-none ${
         !isEditing ? 'cursor-pointer hover:bg-slate-50/50' : ''
       }`}
     >

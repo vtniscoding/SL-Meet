@@ -39,11 +39,16 @@ import {
   Pin,
   PinOff,
   Maximize2,
+  Minimize2,
+  PictureInPicture2,
   Grid,
   Sidebar,
   Columns,
+  LayoutTemplate,
+  Info,
   MoreVertical,
   Check,
+  ChevronDown,
   UserCheck,
   UserX,
   Volume2,
@@ -56,6 +61,7 @@ import {
   Sparkles,
   Type,
   AlignLeft,
+  Globe,
 
   // Navigation, Drawers & Communication
   Home,
@@ -137,10 +143,54 @@ export const UnpinIcon = PinOff;
 export const VolumeIcon = Volume2;
 export const FullscreenIcon = Maximize2;
 export const TiledLayoutIcon = Grid;
+export const GalleryLayoutIcon = Grid;
 export const SidebarLayoutIcon = Columns || Sidebar;
-export const SpotlightLayoutIcon = Maximize2;
+export const SpotlightLayoutIcon = LayoutTemplate;
+export const SpeakerLayoutIcon = LayoutTemplate;
+export const InfoIcon = Info;
+export const RoomDetailsIcon = Info;
+export const PictureInPictureIcon = PictureInPicture2;
+export const ExpandPipIcon = Maximize2;
+export const MinimizePipIcon = Minimize2;
 export const MoreOptionsIcon = MoreVertical;
 export const CheckmarkIcon = Check;
+export const ChevronDownIcon = ChevronDown;
+export const ViewDropdownIcon = ChevronDown;
+
+// Zoom-Style Solid / Filled Layout Icons
+export const ZoomSpeakerFillIcon = ({ className = 'w-4 h-4', ...props }) =>
+  React.createElement(
+    'svg',
+    { viewBox: '0 0 16 16', fill: 'currentColor', className, ...props },
+    React.createElement('rect', { x: '1', y: '2', width: '3.5', height: '2.5', rx: '0.5' }),
+    React.createElement('rect', { x: '6.25', y: '2', width: '3.5', height: '2.5', rx: '0.5' }),
+    React.createElement('rect', { x: '11.5', y: '2', width: '3.5', height: '2.5', rx: '0.5' }),
+    React.createElement('rect', { x: '1', y: '6', width: '14', height: '8', rx: '1' })
+  );
+
+export const ZoomGalleryFillIcon = ({ className = 'w-4 h-4', ...props }) =>
+  React.createElement(
+    'svg',
+    { viewBox: '0 0 16 16', fill: 'currentColor', className, ...props },
+    React.createElement('rect', { x: '1.5', y: '1.5', width: '3.5', height: '3.5', rx: '0.6' }),
+    React.createElement('rect', { x: '6.25', y: '1.5', width: '3.5', height: '3.5', rx: '0.6' }),
+    React.createElement('rect', { x: '11', y: '1.5', width: '3.5', height: '3.5', rx: '0.6' }),
+    React.createElement('rect', { x: '1.5', y: '6.25', width: '3.5', height: '3.5', rx: '0.6' }),
+    React.createElement('rect', { x: '6.25', y: '6.25', width: '3.5', height: '3.5', rx: '0.6' }),
+    React.createElement('rect', { x: '11', y: '6.25', width: '3.5', height: '3.5', rx: '0.6' }),
+    React.createElement('rect', { x: '1.5', y: '11', width: '3.5', height: '3.5', rx: '0.6' }),
+    React.createElement('rect', { x: '6.25', y: '11', width: '3.5', height: '3.5', rx: '0.6' }),
+    React.createElement('rect', { x: '11', y: '11', width: '3.5', height: '3.5', rx: '0.6' })
+  );
+
+export const ZoomSideBySideFillIcon = ({ className = 'w-4 h-4', ...props }) =>
+  React.createElement(
+    'svg',
+    { viewBox: '0 0 16 16', fill: 'currentColor', className, ...props },
+    React.createElement('rect', { x: '1.5', y: '2', width: '3.5', height: '12', rx: '0.8' }),
+    React.createElement('rect', { x: '6.25', y: '2', width: '3.5', height: '12', rx: '0.8' }),
+    React.createElement('rect', { x: '11', y: '2', width: '3.5', height: '12', rx: '0.8' })
+  );
 
 /* =========================================================================
    2. AI, Vision, Gesture & Captions
@@ -151,6 +201,25 @@ export const HandTrackingOffIcon = EyeOff;
 export const SignGestureIcon = Hand;
 export const AiTranslateIcon = Sparkles;
 export const TextFontIcon = Type;
+export const GlobeIcon = Globe;
+export const TtFontSizeIcon = ({ className = 'w-4 h-4', ...props }) =>
+  React.createElement(
+    'svg',
+    {
+      viewBox: '0 0 24 24',
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: '2',
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+      className,
+      ...props,
+    },
+    React.createElement('polyline', { points: '4 7 4 4 14 4 14 7' }),
+    React.createElement('line', { x1: '9', y1: '4', x2: '9', y2: '20' }),
+    React.createElement('polyline', { points: '15 11 15 9 21 9 21 11' }),
+    React.createElement('line', { x1: '18', y1: '9', x2: '18', y2: '20' })
+  );
 export const TextAlignLeftIcon = AlignLeft;
 export const HardwareCameraIcon = Camera;
 export const AIFeatureIcon = Zap;
@@ -271,10 +340,19 @@ export const AppIcons = {
   Volume: VolumeIcon,
   Fullscreen: FullscreenIcon,
   TiledLayout: TiledLayoutIcon,
+  GalleryLayout: GalleryLayoutIcon,
   SidebarLayout: SidebarLayoutIcon,
   SpotlightLayout: SpotlightLayoutIcon,
+  SpeakerLayout: SpeakerLayoutIcon,
   MoreOptions: MoreOptionsIcon,
   Checkmark: CheckmarkIcon,
+  ChevronDown: ChevronDownIcon,
+  ViewDropdown: ViewDropdownIcon,
+  ZoomSpeakerFill: ZoomSpeakerFillIcon,
+  ZoomGalleryFill: ZoomGalleryFillIcon,
+  ZoomSideBySideFill: ZoomSideBySideFillIcon,
+  Info: InfoIcon,
+  RoomDetails: RoomDetailsIcon,
 
   // AI & Vision
   Captions: CaptionsIcon,

@@ -13,5 +13,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('window-maximized-state', handler);
     return () => ipcRenderer.removeListener('window-maximized-state', handler);
   },
+  enterPiP: () => ipcRenderer.invoke('window-enter-pip'),
+  exitPiP: () => ipcRenderer.invoke('window-exit-pip'),
+  isPiP: () => ipcRenderer.invoke('window-is-pip'),
+  onPiPState: (callback) => {
+    const handler = (_event, isPip) => callback(isPip);
+    ipcRenderer.on('pip-mode-changed', handler);
+    return () => ipcRenderer.removeListener('pip-mode-changed', handler);
+  },
 });
-
