@@ -24,7 +24,6 @@ export default function MeetingVideoTile({
 }) {
   const { id, name, isLocal, isCameraOff, isMuted, isSpeaking, isActiveSpeaker, isScreenSharing, stream: tileStream, hasStream } = participant;
   const tileVideoRef = useRef(null);
-  const canvasRef = useRef(null);
 
   const activeStream = tileStream || (isLocal ? localStream : null);
   const hasLiveVideo =
@@ -52,20 +51,6 @@ export default function MeetingVideoTile({
     }
   }, [isLocal, isScreenSharing, externalVideoRef]);
 
-  // Register local canvas element with background MediaPipe worker
-  useEffect(() => {
-    if (isLocal && !isScreenSharing && onRegisterCanvas) {
-      if (canvasRef.current) {
-        onRegisterCanvas(canvasRef.current);
-      }
-    }
-    return () => {
-      if (isLocal && onRegisterCanvas) {
-        onRegisterCanvas(null);
-      }
-    };
-  }, [isLocal, isScreenSharing, onRegisterCanvas]);
-
   const cleanName = (name || '').replace(/\s*\(You\)/i, '').replace(/\s*\(Presentation\)/i, '').trim();
   const initialLetter = cleanName ? cleanName.charAt(0).toUpperCase() : 'U';
 
@@ -88,19 +73,6 @@ export default function MeetingVideoTile({
             : 'object-cover'
         } ${isCameraOff && !isScreenSharing ? 'hidden' : 'block'}`}
       />
-
-      {/* MediaPipe AI Hand Tracking Overlay Canvas (Local camera only) */}
-      {!isScreenSharing && isHandTrackingEnabled && !isCameraOff && isLocal && (
-        <canvas
-          ref={(el) => {
-            canvasRef.current = el;
-            if (isLocal && onRegisterCanvas) {
-              onRegisterCanvas(el);
-            }
-          }}
-          className="absolute inset-0 w-full h-full object-cover pointer-events-none z-10 transform -scale-x-100"
-        />
-      )}
 
       {/* Camera Off Avatar Fallback (Zoom-Style: Profile Avatar with Gray Background) */}
       {!isScreenSharing && (isCameraOff || (!isLocal && (!hasStream || !hasLiveVideo))) && (

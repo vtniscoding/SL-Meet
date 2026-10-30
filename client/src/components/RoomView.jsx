@@ -14,6 +14,7 @@ import MeetingParticipantsDrawer from './room/MeetingParticipantsDrawer';
 import CaptionDock from './room/captions/CaptionDock';
 import RolePromptModal from './room/RolePromptModal';
 import MeetingPipView from './room/MeetingPipView';
+import HandMotionWindow from './room/HandMotionWindow';
 import WindowControls from './common/WindowControls';
 import {
   ZoomSpeakerFillIcon,
@@ -619,6 +620,10 @@ export default function RoomView({
   };
 
   const handleLeave = () => {
+    setIsHandTrackingEnabled(false);
+    if (window.electronAPI?.closeHandMotion) {
+      window.electronAPI.closeHandMotion();
+    }
     if (isPipMode) {
       handleExitPiP();
     }
@@ -643,7 +648,7 @@ export default function RoomView({
   );
 
   // Persistent Room-Level MediaPipe Hand Tracking Worker (Decoupled from UI video tiles)
-  const { registerCanvas } = useHandTrackingWorker({
+  const { latestResultsRef } = useHandTrackingWorker({
     localStream,
     isEnabled: isHandTrackingEnabled && userRole === ROLES.SIGNER,
     isCameraOff,
@@ -709,30 +714,35 @@ export default function RoomView({
     return updatedParticipants.find((p) => p.isLocal) || localCameraParticipant;
   }, [pinnedId, updatedParticipants, effectiveSignerId, localCameraParticipant]);
 
-  if (isPipMode) {
-    return (
-      <MeetingPipView
-        mainParticipant={pipMainParticipant}
-        localStream={localStream}
-        userRole={userRole}
-        isMuted={isMuted}
-        isCameraOff={isCameraOff}
-        speechCaptions={combinedSpeechCaptions}
-        currentSentence={currentSentence}
-        liveTokens={liveTokens}
-        signerName={activeSignerName}
-        isAiEnabled={isAiEnabled}
-        isSttEnabled={isSttEnabled}
-        onExitPiP={handleExitPiP}
-        onLeaveRoom={handleLeave}
-        onToggleMic={toggleMic}
-        onToggleCamera={toggleCamera}
-      />
-    );
-  }
+  const handleCloseHandMotion = useCallback(() => {
+    setIsHandTrackingEnabled(false);
+    if (activeSignerId === 'local') {
+      setActiveSignerId(null);
+    }
+  }, [activeSignerId]);
 
   return (
-    <div className="w-screen h-screen max-h-screen bg-[#121212] text-white flex flex-col justify-between font-sans select-none overflow-hidden">
+    <>
+      {isPipMode ? (
+        <MeetingPipView
+          mainParticipant={pipMainParticipant}
+          localStream={localStream}
+          userRole={userRole}
+          isMuted={isMuted}
+          isCameraOff={isCameraOff}
+          speechCaptions={combinedSpeechCaptions}
+          currentSentence={currentSentence}
+          liveTokens={liveTokens}
+          signerName={activeSignerName}
+          isAiEnabled={isAiEnabled}
+          isSttEnabled={isSttEnabled}
+          onExitPiP={handleExitPiP}
+          onLeaveRoom={handleLeave}
+          onToggleMic={toggleMic}
+          onToggleCamera={toggleCamera}
+        />
+      ) : (
+        <div className="w-screen h-screen max-h-screen bg-[#121212] text-white flex flex-col justify-between font-sans select-none overflow-hidden">
       {/* Top Header Room Info with Custom Window Dragging & IPC WindowControls */}
       <header
         onDoubleClick={() => window.electronAPI?.toggleMaximize?.()}
@@ -867,7 +877,6 @@ export default function RoomView({
               speechCaptions={combinedSpeechCaptions}
               userRole={userRole}
               isSttActive={isSttActive}
-              onRegisterCanvas={registerCanvas}
             />
           </div>
 
@@ -954,7 +963,18 @@ export default function RoomView({
         onSelectRole={handleChangeRole}
         onClose={() => setIsRoleModalOpen(false)}
       />
-    </div>
+        </div>
+      )}
+
+      {/* Detached OS Companion Window for 2-Hand Camera Motion Tracking */}
+      <HandMotionWindow
+        isOpen={isHandTrackingEnabled && userRole === ROLES.SIGNER}
+        localStream={localStream}
+        isCameraOff={isCameraOff}
+        latestResultsRef={latestResultsRef}
+        onClose={handleCloseHandMotion}
+      />
+    </>
   );
 }
 

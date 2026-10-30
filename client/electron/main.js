@@ -9,6 +9,7 @@ const __dirname = path.dirname(__filename);
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 let mainWindow = null;
+let handMotionWindow = null;
 let isPipMode = false;
 let prePipBounds = null;
 let prePipWasMaximized = false;
@@ -48,6 +49,56 @@ function createWindow() {
     mainWindow?.webContents.send('window-maximized-state', false);
   });
 
+  // Allow same-origin detached OS companion window for 2-Hand Motion Tracking
+  mainWindow.webContents.setWindowOpenHandler(({ frameName }) => {
+    if (frameName === 'sl-meet-hand-motion') {
+      const refBounds =
+        mainWindow && !mainWindow.isDestroyed()
+          ? mainWindow.getBounds()
+          : { x: 0, y: 0, width: 1280, height: 800 };
+      const display = screen.getDisplayMatching(refBounds);
+      const { workArea } = display;
+      const motionWidth = 440;
+      const motionHeight = 340;
+      const margin = 24;
+
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          x: Math.round(workArea.x + workArea.width - motionWidth - margin),
+          y: Math.round(workArea.y + margin + 36),
+          width: motionWidth,
+          height: motionHeight,
+          minWidth: 320,
+          minHeight: 250,
+          icon: iconPath,
+          autoHideMenuBar: true,
+          frame: false,
+          titleBarStyle: 'hidden',
+          alwaysOnTop: true,
+          backgroundColor: '#202124',
+          title: 'AI Hand Motion',
+        },
+      };
+    }
+    return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('did-create-window', (childWin, details) => {
+    if (details.frameName === 'sl-meet-hand-motion') {
+      handMotionWindow = childWin;
+      childWin.setAlwaysOnTop(true, 'floating');
+      childWin.on('closed', () => {
+        if (handMotionWindow === childWin) {
+          handMotionWindow = null;
+        }
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('hand-motion-window-closed');
+        }
+      });
+    }
+  });
+
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
     // mainWindow.webContents.openDevTools({ mode: 'detach' });
@@ -56,6 +107,10 @@ function createWindow() {
   }
 
   mainWindow.on('closed', () => {
+    if (handMotionWindow && !handMotionWindow.isDestroyed()) {
+      handMotionWindow.close();
+      handMotionWindow = null;
+    }
     mainWindow = null;
     isPipMode = false;
     prePipBounds = null;
@@ -195,3 +250,28 @@ ipcMain.handle('window-exit-pip', () => {
 });
 
 ipcMain.handle('window-is-pip', () => isPipMode);
+
+// Detached 2-Hand Motion Tracking Window IPC Handlers
+ipcMain.on('hand-motion-minimize', () => {
+  if (handMotionWindow && !handMotionWindow.isDestroyed()) {
+    handMotionWindow.minimize();
+  }
+});
+
+ipcMain.handle('hand-motion-toggle-pin', () => {
+  if (!handMotionWindow || handMotionWindow.isDestroyed()) return false;
+  const nextPinned = !handMotionWindow.isAlwaysOnTop();
+  if (nextPinned) {
+    handMotionWindow.setAlwaysOnTop(true, 'floating');
+  } else {
+    handMotionWindow.setAlwaysOnTop(false);
+  }
+  return nextPinned;
+});
+
+ipcMain.on('hand-motion-close', () => {
+  if (handMotionWindow && !handMotionWindow.isDestroyed()) {
+    handMotionWindow.close();
+    handMotionWindow = null;
+  }
+});

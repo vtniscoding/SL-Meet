@@ -94,47 +94,114 @@ export class LandmarkSmoother {
   reset() {
     this.prevLandmarks = null;
     this.currentVelocity = 0;
+    this.lastTimestamp = 0;
+  }
+
+  /**
+   * Returns Euclidean 2D wrist distance to candidate hand landmarks, or fallback distance if inactive
+   */
+  wristDistanceTo(landmarks, now = Date.now(), maxStaleMs = 500) {
+    if (
+      !this.prevLandmarks ||
+      !this.prevLandmarks[0] ||
+      !landmarks ||
+      !landmarks[0] ||
+      now - this.lastTimestamp > maxStaleMs
+    ) {
+      return 0.5;
+    }
+    const dx = landmarks[0].x - this.prevLandmarks[0].x;
+    const dy = landmarks[0].y - this.prevLandmarks[0].y;
+    return Math.hypot(dx, dy);
   }
 }
 
-// Global smoother instances for Hand 1 and Hand 2
-const hand1Smoother = new LandmarkSmoother();
-const hand2Smoother = new LandmarkSmoother();
+// Persistent spatial smoother slots (matched by nearest wrist to prevent left/right swap distortion)
+const handSlotA = new LandmarkSmoother();
+const handSlotB = new LandmarkSmoother();
+const FAST_TRANSITION_VELOCITY = 0.042;
 
 /**
- * Smooths all detected hands in multiHandLandmarks array
+ * Smooths all detected hands in multiHandLandmarks array using Nearest-Wrist Slot Matching
+ * so MediaPipe array index swaps never blend Left and Right hand coordinates together.
+ *
  * @param {Array} multiHandLandmarks - Array of landmark arrays
- * @returns {Object} { smoothedMultiHandLandmarks, isHandMoving }
+ * @returns {Object} { smoothedMultiHandLandmarks, isHandMoving, isFastTransition, maxVelocity }
  */
 export function smoothMultiHandLandmarks(multiHandLandmarks) {
   if (!multiHandLandmarks || multiHandLandmarks.length === 0) {
-    hand1Smoother.reset();
-    hand2Smoother.reset();
-    return { smoothedMultiHandLandmarks: [], isHandMoving: false };
+    handSlotA.reset();
+    handSlotB.reset();
+    return {
+      smoothedMultiHandLandmarks: [],
+      isHandMoving: false,
+      isFastTransition: false,
+      maxVelocity: 0,
+    };
   }
 
   const now = Date.now();
-  const smoothedList = [];
-  let isAnyHandMoving = false;
 
-  // Smooth Hand 1
-  if (multiHandLandmarks[0]) {
-    const res1 = hand1Smoother.smooth(multiHandLandmarks[0], now);
-    smoothedList.push(res1.smoothedLandmarks);
-    if (res1.isTransitioning) isAnyHandMoving = true;
+  // Single-hand case: match to whichever active slot was tracking this wrist
+  if (multiHandLandmarks.length === 1 || !multiHandLandmarks[1]) {
+    const h0 = multiHandLandmarks[0];
+    if (!h0) {
+      handSlotA.reset();
+      handSlotB.reset();
+      return {
+        smoothedMultiHandLandmarks: [],
+        isHandMoving: false,
+        isFastTransition: false,
+        maxVelocity: 0,
+      };
+    }
+
+    const distA = handSlotA.wristDistanceTo(h0, now);
+    const distB = handSlotB.wristDistanceTo(h0, now);
+    const useSlotB =
+      handSlotB.prevLandmarks && distB < distA && distB < 0.25;
+
+    const res = useSlotB ? handSlotB.smooth(h0, now) : handSlotA.smooth(h0, now);
+    if (useSlotB) {
+      handSlotA.reset();
+    } else {
+      handSlotB.reset();
+    }
+
+    return {
+      smoothedMultiHandLandmarks: [res.smoothedLandmarks],
+      isHandMoving: res.isTransitioning,
+      isFastTransition: res.velocity > FAST_TRANSITION_VELOCITY,
+      maxVelocity: res.velocity,
+    };
   }
 
-  // Smooth Hand 2
-  if (multiHandLandmarks[1]) {
-    const res2 = hand2Smoother.smooth(multiHandLandmarks[1], now);
-    smoothedList.push(res2.smoothedLandmarks);
-    if (res2.isTransitioning) isAnyHandMoving = true;
-  } else {
-    hand2Smoother.reset();
+  // Two-hand case: solve 2x2 minimum-cost wrist assignment to prevent cross-hand blending
+  let hA = multiHandLandmarks[0];
+  let hB = multiHandLandmarks[1];
+
+  const hasPrior = Boolean(handSlotA.prevLandmarks || handSlotB.prevLandmarks);
+  if (hasPrior) {
+    const costDirect =
+      handSlotA.wristDistanceTo(hA, now) + handSlotB.wristDistanceTo(hB, now);
+    const costSwapped =
+      handSlotA.wristDistanceTo(hB, now) + handSlotB.wristDistanceTo(hA, now);
+    if (costSwapped < costDirect) {
+      [hA, hB] = [hB, hA];
+    }
+  } else if (hA[0] && hB[0] && hA[0].x > hB[0].x) {
+    // Deterministic spatial initialization when both hands appear simultaneously
+    [hA, hB] = [hB, hA];
   }
+
+  const resA = handSlotA.smooth(hA, now);
+  const resB = handSlotB.smooth(hB, now);
+  const maxVelocity = Math.max(resA.velocity, resB.velocity);
 
   return {
-    smoothedMultiHandLandmarks: smoothedList,
-    isHandMoving: isAnyHandMoving,
+    smoothedMultiHandLandmarks: [resA.smoothedLandmarks, resB.smoothedLandmarks],
+    isHandMoving: resA.isTransitioning || resB.isTransitioning,
+    isFastTransition: maxVelocity > FAST_TRANSITION_VELOCITY,
+    maxVelocity: parseFloat(maxVelocity.toFixed(4)),
   };
 }

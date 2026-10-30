@@ -31,6 +31,8 @@ export function useHandTrackingWorker({
   const isReadyRef = useRef(false);
   const isProcessingFrameRef = useRef(false);
   const animFrameIdRef = useRef(null);
+  const bgTimerIdRef = useRef(null);
+  const latestResultsRef = useRef(null);
 
   const isEnabledRef = useRef(isEnabled);
   const isCameraOffRef = useRef(isCameraOff);
@@ -88,14 +90,23 @@ export function useHandTrackingWorker({
     }
   }, [localStream, isCameraOff]);
 
-  // 3. Animation frame processing loop (only runs when enabled && camera active && ready)
-  const checkStartLoop = useCallback(() => {
+  const cancelScheduledFrame = useCallback(() => {
     if (animFrameIdRef.current) {
       cancelAnimationFrame(animFrameIdRef.current);
       animFrameIdRef.current = null;
     }
+    if (bgTimerIdRef.current) {
+      clearTimeout(bgTimerIdRef.current);
+      bgTimerIdRef.current = null;
+    }
+  }, []);
+
+  // 3. Animation frame processing loop (keeps running at ~30fps even if main window is occluded while companion OS window is visible)
+  const checkStartLoop = useCallback(() => {
+    cancelScheduledFrame();
 
     if (!isEnabled || isCameraOff || !isReadyRef.current) {
+      latestResultsRef.current = null;
       // Clear canvas if paused
       if (activeCanvasRef.current) {
         const ctx = activeCanvasRef.current.getContext('2d');
@@ -105,6 +116,14 @@ export function useHandTrackingWorker({
       }
       return;
     }
+
+    const scheduleNext = (cb) => {
+      if (document.hidden) {
+        bgTimerIdRef.current = setTimeout(cb, 33);
+      } else {
+        animFrameIdRef.current = requestAnimationFrame(cb);
+      }
+    };
 
     const processFrame = async () => {
       if (!isEnabledRef.current || isCameraOffRef.current) {
@@ -134,22 +153,20 @@ export function useHandTrackingWorker({
       }
 
       if (isEnabledRef.current && !isCameraOffRef.current) {
-        animFrameIdRef.current = requestAnimationFrame(processFrame);
+        scheduleNext(processFrame);
       }
     };
 
-    animFrameIdRef.current = requestAnimationFrame(processFrame);
-  }, [isEnabled, isCameraOff]);
+    scheduleNext(processFrame);
+  }, [isEnabled, isCameraOff, cancelScheduledFrame]);
 
   // 4. Initialize persistent MediaPipe Hands instance lazily when enabled
   useEffect(() => {
     let isMounted = true;
 
     if (!isEnabled) {
-      if (animFrameIdRef.current) {
-        cancelAnimationFrame(animFrameIdRef.current);
-        animFrameIdRef.current = null;
-      }
+      cancelScheduledFrame();
+      latestResultsRef.current = null;
       if (activeCanvasRef.current) {
         const ctx = activeCanvasRef.current.getContext('2d');
         if (ctx) {
@@ -162,7 +179,7 @@ export function useHandTrackingWorker({
     const handleResults = (results) => {
       if (!isMounted) return;
 
-      // Draw hand landmarks to registered canvas (if currently mounted and enabled)
+      // Draw hand landmarks to optional registered canvas (if any)
       const canvas = activeCanvasRef.current;
       if (canvas && isEnabledRef.current && !isCameraOffRef.current) {
         const video = hiddenVideoRef.current;
@@ -179,6 +196,9 @@ export function useHandTrackingWorker({
       }
 
       // Gesture classification and notification
+      let detectedGesture = '';
+      let detectedConfidence = 0;
+
       if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         const { gesture, confidence } = classifyGesture(
           results.multiHandLandmarks[0],
@@ -186,6 +206,8 @@ export function useHandTrackingWorker({
           results.multiHandLandmarks,
           results.multiHandedness
         );
+        detectedGesture = gesture || '';
+        detectedConfidence = confidence || 0;
         if (gesture && gesture !== 'Signing...' && onGestureDetectedRef.current) {
           onGestureDetectedRef.current({ gesture, confidence });
         }
@@ -194,6 +216,14 @@ export function useHandTrackingWorker({
           onGestureDetectedRef.current(null);
         }
       }
+
+      // Publish live tracking snapshot for the detached 60fps Hand Motion OS Window
+      latestResultsRef.current = {
+        results,
+        updatedAt: Date.now(),
+        gesture: detectedGesture,
+        confidence: detectedConfidence,
+      };
     };
 
     if (!handsInstanceRef.current) {
@@ -214,33 +244,28 @@ export function useHandTrackingWorker({
     return () => {
       isMounted = false;
     };
-  }, [isEnabled, checkStartLoop]);
+  }, [isEnabled, checkStartLoop, cancelScheduledFrame]);
 
   // 5. Trigger loop restart when isEnabled or isCameraOff changes
   useEffect(() => {
     checkStartLoop();
     return () => {
-      if (animFrameIdRef.current) {
-        cancelAnimationFrame(animFrameIdRef.current);
-        animFrameIdRef.current = null;
-      }
+      cancelScheduledFrame();
     };
-  }, [checkStartLoop]);
+  }, [checkStartLoop, cancelScheduledFrame]);
 
   // 6. Cleanup on component unmount
   useEffect(() => {
     return () => {
-      if (animFrameIdRef.current) {
-        cancelAnimationFrame(animFrameIdRef.current);
-        animFrameIdRef.current = null;
-      }
+      cancelScheduledFrame();
+      latestResultsRef.current = null;
       setMediaPipeResultsCallback(null);
       handsInstanceRef.current = null;
       isReadyRef.current = false;
     };
-  }, []);
+  }, [cancelScheduledFrame]);
 
-  // 5. Canvas Registration: called by MeetingVideoTile when mounted or layout changes
+  // 7. Optional Canvas Registration
   const registerCanvas = useCallback((canvasEl) => {
     activeCanvasRef.current = canvasEl;
     if (canvasEl && (!isEnabledRef.current || isCameraOffRef.current)) {
@@ -253,5 +278,6 @@ export function useHandTrackingWorker({
 
   return {
     registerCanvas,
+    latestResultsRef,
   };
 }

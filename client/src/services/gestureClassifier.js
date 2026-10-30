@@ -2,6 +2,14 @@ import defaultDataset from '../data/asl_dataset.json';
 import { SOCKET_URL } from './socket';
 import { supabase } from '../utils/supabase';
 import { smoothMultiHandLandmarks } from './landmarkSmoother';
+import {
+  isDynamicSample,
+  computeDTWDistance,
+  DTW_MATCH_THRESHOLD,
+  LiveDynamicMotionRecognizer,
+} from './dtwClassifier';
+
+const liveDtwRecognizer = new LiveDynamicMotionRecognizer();
 
 const LOCAL_STORAGE_DATASET_KEY = 'sl_meet_asl_dataset_cache';
 
@@ -266,37 +274,255 @@ export function exportCurrentDataset() {
  * @param {Array} multiHandLandmarks - List of landmark arrays for all detected hands
  * @returns {Object} Result { gesture, confidence, distance, closestGesture, isAmbiguous }
  */
-export function classifyLandmarksWithDataset(multiHandLandmarks) {
-  if (!multiHandLandmarks || multiHandLandmarks.length === 0) {
-    return { gesture: '', confidence: 0, distance: null, closestGesture: null };
+/**
+ * Summarizes a batch of static normalized pose vectors with 15% statistical outlier rejection
+ * and computes a 0-99% Stability Quality Score.
+ */
+export function summarizeStaticCapture(rawVectors) {
+  if (!Array.isArray(rawVectors) || rawVectors.length === 0) return null;
+
+  const lenCounts = {};
+  for (const v of rawVectors) {
+    if (Array.isArray(v) && (v.length === 63 || v.length === 126)) {
+      lenCounts[v.length] = (lenCounts[v.length] || 0) + 1;
+    }
+  }
+  const availableDims = Object.keys(lenCounts);
+  if (availableDims.length === 0) return null;
+
+  const dominantLen = Number(
+    availableDims.reduce((a, b) => (lenCounts[a] >= lenCounts[b] ? a : b))
+  );
+  const validFrames = rawVectors.filter((v) => Array.isArray(v) && v.length === dominantLen);
+  if (validFrames.length === 0) return null;
+
+  // Initial mean centroid
+  const roughMean = new Array(dominantLen).fill(0);
+  for (const f of validFrames) {
+    for (let i = 0; i < dominantLen; i++) {
+      roughMean[i] += f[i];
+    }
+  }
+  for (let i = 0; i < dominantLen; i++) {
+    roughMean[i] /= validFrames.length;
   }
 
-  // 1. Adaptive Landmark Smoothing & Motion Settle Detection
-  const { smoothedMultiHandLandmarks, isHandMoving } = smoothMultiHandLandmarks(multiHandLandmarks);
+  // Compute deviation of each frame from centroid and reject worst 15% jitter/outlier frames
+  const scored = validFrames
+    .map((frame) => {
+      let sumSq = 0;
+      for (let i = 0; i < dominantLen; i++) {
+        const diff = frame[i] - roughMean[i];
+        sumSq += diff * diff;
+      }
+      return { frame, dist: Math.sqrt(sumSq) };
+    })
+    .sort((a, b) => a.dist - b.dist);
+
+  const keepCount =
+    scored.length >= 10 ? Math.max(6, Math.floor(scored.length * 0.85)) : scored.length;
+  const kept = scored.slice(0, keepCount);
+
+  const avgVector = new Array(dominantLen).fill(0);
+  let meanDev = 0;
+  for (const item of kept) {
+    meanDev += item.dist;
+    for (let i = 0; i < dominantLen; i++) {
+      avgVector[i] += item.frame[i];
+    }
+  }
+  meanDev /= kept.length;
+
+  for (let i = 0; i < dominantLen; i++) {
+    avgVector[i] = parseFloat((avgVector[i] / kept.length).toFixed(4));
+  }
+
+  const refSpread = dominantLen === 126 ? 0.85 : 0.55;
+  const stabilityScore = Math.round(
+    Math.min(99, Math.max(30, (1 - meanDev / refSpread) * 100))
+  );
+
+  return {
+    vector: avgVector,
+    dimension: dominantLen,
+    totalFrames: validFrames.length,
+    keptFrames: kept.length,
+    stabilityScore,
+  };
+}
+
+/**
+ * Checks whether a newly captured static vector or dynamic DTW sequence overlaps closely
+ * with an existing sample belonging to a DIFFERENT gesture label.
+ */
+export function checkDatasetConflict(candidateVector, targetLabel = '', mode = 'static') {
+  if (!candidateVector || !Array.isArray(candidateVector)) return null;
+  const cleanTarget = (targetLabel || '').trim().toLowerCase();
+
+  let closestConflict = null;
+  let minDistance = Infinity;
+
+  if (mode === 'dynamic') {
+    for (const sample of activeDataset) {
+      if (!isDynamicSample(sample)) continue;
+      if (cleanTarget && (sample.name || '').trim().toLowerCase() === cleanTarget) continue;
+
+      const dist = computeDTWDistance(candidateVector, sample.vector);
+      if (dist < minDistance) {
+        minDistance = dist;
+        closestConflict = sample.name;
+      }
+    }
+
+    const warnThresh = DTW_MATCH_THRESHOLD * 0.82;
+    if (closestConflict && minDistance < warnThresh) {
+      const sim = Math.round(
+        Math.min(99, Math.max(50, (1 - minDistance / (DTW_MATCH_THRESHOLD * 1.4)) * 100))
+      );
+      return {
+        hasConflict: true,
+        conflictingLabel: closestConflict,
+        distance: parseFloat(minDistance.toFixed(2)),
+        similarityPct: sim,
+      };
+    }
+    return null;
+  }
+
+  // Static mode conflict check
+  const dim = candidateVector.length;
+  const isTwoHands = dim === 126;
+
+  for (const sample of activeDataset) {
+    if (!sample.vector || !Array.isArray(sample.vector) || isDynamicSample(sample)) continue;
+    if (cleanTarget && (sample.name || '').trim().toLowerCase() === cleanTarget) continue;
+    if (Math.abs(sample.vector.length - dim) > 12) continue;
+
+    const len = Math.min(dim, sample.vector.length);
+    let sumSq = 0;
+    for (let i = 0; i < len; i++) {
+      const diff = candidateVector[i] - sample.vector[i];
+      sumSq += diff * diff;
+    }
+    const dist = Math.sqrt(sumSq);
+    if (dist < minDistance) {
+      minDistance = dist;
+      closestConflict = sample.name;
+    }
+  }
+
+  const warnThresh = isTwoHands ? 1.15 : 0.68;
+  const normRef = isTwoHands ? 1.60 : 0.95;
+
+  if (closestConflict && minDistance < warnThresh) {
+    const sim = Math.round(
+      Math.min(99, Math.max(55, (1 - minDistance / (normRef * 1.35)) * 100))
+    );
+    return {
+      hasConflict: true,
+      conflictingLabel: closestConflict,
+      distance: parseFloat(minDistance.toFixed(2)),
+      similarityPct: sim,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Classifies hand gesture using unified Dynamic DTW + Adaptive Static k-NN matching.
+ *
+ * @param {Array} multiHandLandmarks - List of landmark arrays for all detected hands
+ * @returns {Object} Result { gesture, confidence, distance, closestGesture, mode, topCandidates }
+ */
+export function classifyLandmarksWithDataset(multiHandLandmarks) {
+  if (!multiHandLandmarks || multiHandLandmarks.length === 0) {
+    liveDtwRecognizer.step(null, normalizeMultiHandLandmarks, []);
+    return {
+      gesture: '',
+      confidence: 0,
+      distance: null,
+      closestGesture: null,
+      topCandidates: [],
+    };
+  }
+
+  // 1. Adaptive Landmark Smoothing (Nearest-Wrist Anti-Swap) & Velocity Tracking
+  const { smoothedMultiHandLandmarks, isHandMoving, isFastTransition, maxVelocity } =
+    smoothMultiHandLandmarks(multiHandLandmarks);
+
+  const dynamicSamples = [];
+  const staticSamples = [];
+  for (const s of activeDataset) {
+    if (!s || !Array.isArray(s.vector)) continue;
+    if (isDynamicSample(s)) {
+      dynamicSamples.push(s);
+    } else if (typeof s.vector[0] === 'number') {
+      staticSamples.push(s);
+    }
+  }
+
+  // 2. Step Continuous Dynamic Motion (DTW) Recognizer BEFORE static velocity gating
+  const dynamicMatch = liveDtwRecognizer.step(
+    smoothedMultiHandLandmarks,
+    normalizeMultiHandLandmarks,
+    dynamicSamples
+  );
+
+  if (dynamicMatch && dynamicMatch.matched) {
+    return {
+      gesture: dynamicMatch.gesture,
+      confidence: dynamicMatch.confidence,
+      distance: dynamicMatch.distance,
+      closestGesture: dynamicMatch.closestGesture,
+      margin: dynamicMatch.margin,
+      mode: 'dynamic',
+      topCandidates: dynamicMatch.topCandidates || [],
+      smoothedLandmarks: smoothedMultiHandLandmarks,
+      isFastTransition,
+      maxVelocity,
+    };
+  }
+
+  if (isFastTransition) {
+    return {
+      gesture: 'Signing...',
+      confidence: 0.55,
+      distance: null,
+      closestGesture: null,
+      isTransitioning: true,
+      topCandidates: liveDtwRecognizer.latestTopDynamic || [],
+      smoothedLandmarks: smoothedMultiHandLandmarks,
+      isFastTransition,
+      maxVelocity,
+    };
+  }
 
   const inputVector = normalizeMultiHandLandmarks(smoothedMultiHandLandmarks);
   if (!inputVector) {
-    return { gesture: '', confidence: 0, distance: null, closestGesture: null };
+    return {
+      gesture: '',
+      confidence: 0,
+      distance: null,
+      closestGesture: null,
+      topCandidates: [],
+      smoothedLandmarks: smoothedMultiHandLandmarks,
+      isFastTransition,
+      maxVelocity,
+    };
   }
 
   const inputLen = inputVector.length;
   const isTwoHandsInput = inputLen === 126;
+  const normThreshold = isTwoHandsInput ? 1.60 : 0.95;
 
-  let minDistance = Infinity;
-  let bestMatch = null;
-  let secondMinDistance = Infinity;
-  let secondBestMatch = null;
+  // Track best Euclidean distance per distinct gesture class for accurate Top-3 Radar & margin check
+  const bestByClass = new Map();
 
-  for (const sample of activeDataset) {
-    if (!sample.vector || !Array.isArray(sample.vector)) continue;
-
+  for (const sample of staticSamples) {
     const sampleLen = sample.vector.length;
     let compareVector = inputVector;
 
-    // Match dimensionality:
-    // If input is 2-hand (126D) and sample is 2-hand (126D) -> Direct compare
-    // If input is 2-hand (126D) and sample is 1-hand (63D) -> Compare primary hand
-    // If input is 1-hand (63D) and sample is 2-hand (126D) -> Skip (requires 2 hands)
     if (isTwoHandsInput && sampleLen === 63) {
       compareVector = inputVector.slice(0, 63);
     } else if (!isTwoHandsInput && sampleLen >= 126) {
@@ -312,47 +538,72 @@ export function classifyLandmarksWithDataset(multiHandLandmarks) {
       sumSquare += diff * diff;
     }
     const distance = Math.sqrt(sumSquare);
+    const sampleThreshold = sampleLen >= 126 ? 1.60 : 0.95;
 
-    if (distance < minDistance) {
-      // If previous best belongs to a different gesture class, promote it to runner-up
-      if (bestMatch && bestMatch.name !== sample.name) {
-        secondMinDistance = minDistance;
-        secondBestMatch = bestMatch;
-      }
-      minDistance = distance;
-      bestMatch = sample;
-    } else if (distance < secondMinDistance && sample.name !== bestMatch?.name) {
-      secondMinDistance = distance;
-      secondBestMatch = sample;
+    const existing = bestByClass.get(sample.name);
+    if (!existing || distance < existing.distance) {
+      bestByClass.set(sample.name, {
+        name: sample.name,
+        distance,
+        threshold: sampleThreshold,
+        sample,
+      });
     }
   }
 
-  // Strict Thresholds: 1.60 for 2 hands, 0.95 for 1 hand (prevents false matches between similar letters like A, M, N)
-  const normThreshold = isTwoHandsInput ? 1.60 : 0.95;
+  const rankedClasses = Array.from(bestByClass.values()).sort(
+    (a, b) => a.distance - b.distance
+  );
 
-  if (bestMatch && minDistance < normThreshold) {
-    // 2. Relative Margin Check: How far is the best match from the closest competitor?
-    // If the difference is tiny (< 12%), hand is in an ambiguous transition state between 2 signs!
+  const staticTopCandidates = rankedClasses.slice(0, 3).map((item) => {
+    const sim = Math.min(
+      0.99,
+      Math.max(0.05, 1 - item.distance / (item.threshold * 1.55))
+    );
+    return {
+      name: item.name,
+      distance: parseFloat(item.distance.toFixed(2)),
+      confidence: parseFloat(sim.toFixed(2)),
+      mode: 'static',
+    };
+  });
+
+  // Merge with recent dynamic candidates if user recently moved hands so Radar shows both modes
+  const mergedCandidates = [...staticTopCandidates, ...(liveDtwRecognizer.latestTopDynamic || [])]
+    .sort((a, b) => b.confidence - a.confidence)
+    .filter((item, idx, arr) => arr.findIndex((x) => x.name === item.name) === idx)
+    .slice(0, 3);
+
+  const bestEntry = rankedClasses[0] || null;
+  const secondEntry = rankedClasses[1] || null;
+  const minDistance = bestEntry ? bestEntry.distance : Infinity;
+  const bestMatch = bestEntry ? bestEntry.sample : null;
+  const activeThreshold = bestEntry ? bestEntry.threshold : normThreshold;
+
+  if (bestMatch && minDistance < activeThreshold) {
     let margin = 1.0;
-    if (secondBestMatch && secondMinDistance < Infinity) {
-      margin = (secondMinDistance - minDistance) / Math.max(minDistance, 0.01);
+    if (secondEntry && Number.isFinite(secondEntry.distance)) {
+      margin = (secondEntry.distance - minDistance) / Math.max(minDistance, 0.01);
     }
 
     const isAmbiguousTransition = margin < 0.12;
 
     if (isAmbiguousTransition || (isHandMoving && margin < 0.20)) {
-      // Hand is transitioning between close signs (e.g. A -> N -> M)
       return {
         gesture: 'Signing...',
         confidence: 0.55,
         distance: parseFloat(minDistance.toFixed(2)),
         closestGesture: bestMatch.name,
         isAmbiguous: true,
+        mode: 'static',
+        topCandidates: mergedCandidates,
+        smoothedLandmarks: smoothedMultiHandLandmarks,
+        isFastTransition,
+        maxVelocity,
       };
     }
 
-    // 3. Calibrated Confidence Calculation
-    const distRatio = minDistance / normThreshold;
+    const distRatio = minDistance / activeThreshold;
     const baseConfidence = Math.max(0.60, 1.0 - distRatio * 0.40);
     const marginBonus = Math.min(0.08, margin * 0.15);
     const confidence = parseFloat(Math.min(0.98, baseConfidence + marginBonus).toFixed(2));
@@ -363,6 +614,11 @@ export function classifyLandmarksWithDataset(multiHandLandmarks) {
       distance: parseFloat(minDistance.toFixed(2)),
       closestGesture: bestMatch.name,
       margin: parseFloat(margin.toFixed(2)),
+      mode: 'static',
+      topCandidates: mergedCandidates,
+      smoothedLandmarks: smoothedMultiHandLandmarks,
+      isFastTransition,
+      maxVelocity,
     };
   }
 
@@ -371,5 +627,10 @@ export function classifyLandmarksWithDataset(multiHandLandmarks) {
     confidence: 0.55,
     distance: bestMatch ? parseFloat(minDistance.toFixed(2)) : null,
     closestGesture: bestMatch ? bestMatch.name : null,
+    mode: 'static',
+    topCandidates: mergedCandidates,
+    smoothedLandmarks: smoothedMultiHandLandmarks,
+    isFastTransition,
+    maxVelocity,
   };
 }

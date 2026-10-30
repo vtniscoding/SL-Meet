@@ -21,4 +21,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('pip-mode-changed', handler);
     return () => ipcRenderer.removeListener('pip-mode-changed', handler);
   },
+  minimizeHandMotion: () => ipcRenderer.send('hand-motion-minimize'),
+  toggleHandMotionPin: () => ipcRenderer.invoke('hand-motion-toggle-pin'),
+  closeHandMotion: () => ipcRenderer.send('hand-motion-close'),
+  onHandMotionClosed: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('hand-motion-window-closed', handler);
+    return () => ipcRenderer.removeListener('hand-motion-window-closed', handler);
+  },
 });

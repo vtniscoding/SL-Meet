@@ -75,6 +75,9 @@ import {
   Settings,
   FileText,
   Download,
+  Upload,
+  Plus,
+  Key,
   RotateCcw,
   ArrowLeft,
   ArrowRight,
@@ -223,6 +226,25 @@ export const TtFontSizeIcon = ({ className = 'w-4 h-4', ...props }) =>
 export const TextAlignLeftIcon = AlignLeft;
 export const HardwareCameraIcon = Camera;
 export const AIFeatureIcon = Zap;
+export const FocusTargetIcon = ({ className = 'w-4 h-4', ...props }) =>
+  React.createElement(
+    'svg',
+    {
+      viewBox: '0 0 24 24',
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: '2',
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+      className,
+      ...props,
+    },
+    React.createElement('path', { d: 'M3 7V5a2 2 0 0 1 2-2h2' }),
+    React.createElement('path', { d: 'M17 3h2a2 2 0 0 1 2 2v2' }),
+    React.createElement('path', { d: 'M21 17v2a2 2 0 0 1-2 2h-2' }),
+    React.createElement('path', { d: 'M7 21H5a2 2 0 0 1-2-2v-2' }),
+    React.createElement('circle', { cx: '12', cy: '12', r: '3' })
+  );
 
 /* =========================================================================
    3. Navigation, Drawers & Interaction
@@ -279,6 +301,9 @@ export const SendIcon = Send;
 export const SettingsIcon = Settings;
 export const TranscriptFileIcon = FileText;
 export const DownloadTranscriptIcon = Download;
+export const UploadBackupIcon = Upload;
+export const PlusActionIcon = Plus;
+export const KeySecretIcon = Key;
 export const ResetSettingsIcon = RotateCcw;
 export const BackNavIcon = ArrowLeft;
 export const ForwardNavIcon = ArrowRight;
@@ -364,6 +389,7 @@ export const AppIcons = {
   TextAlignLeft: TextAlignLeftIcon,
   HardwareCamera: HardwareCameraIcon,
   AIFeature: AIFeatureIcon,
+  FocusTarget: FocusTargetIcon,
 
   // Navigation & Drawers
   Home: HomeNavIcon,
@@ -377,6 +403,9 @@ export const AppIcons = {
   Settings: SettingsIcon,
   Transcript: TranscriptFileIcon,
   Download: DownloadTranscriptIcon,
+  UploadBackup: UploadBackupIcon,
+  Plus: PlusActionIcon,
+  KeySecret: KeySecretIcon,
   Reset: ResetSettingsIcon,
   Back: BackNavIcon,
   Forward: ForwardNavIcon,
