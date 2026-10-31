@@ -36,6 +36,14 @@ export function colorForSender(senderId) {
 }
 
 /**
+ * Returns a randomly picked speaker color from the standard palette.
+ */
+export function getRandomSpeakerColor() {
+  const index = Math.floor(Math.random() * C.SPEAKER_COLORS.length);
+  return C.SPEAKER_COLORS[index];
+}
+
+/**
  * Pure helper function to merge incoming captions into the existing display entries.
  * Rules:
  * 1. If incoming is interim and the last entry from that sender was also interim, update in place.
@@ -54,6 +62,8 @@ export function mergeCaptionEntries(prevEntries = [], incoming = null, maxEntrie
     id: entryId,
     senderId: incoming.senderId || 'unknown',
     senderName: incoming.senderName || 'Speaker',
+    avatarColor: incoming.avatarColor || (incoming.senderId ? colorForSender(incoming.senderId) : C.SPEAKER_COLORS[0]),
+    avatarUrl: incoming.avatarUrl || null,
     text: incoming.text.trim(),
     isFinal: !!incoming.isFinal,
     timestamp: incoming.timestamp || now,
@@ -76,6 +86,8 @@ export function mergeCaptionEntries(prevEntries = [], incoming = null, maxEntrie
       ...updated[lastSenderIdx],
       text: newEntry.text,
       isFinal: newEntry.isFinal,
+      avatarColor: newEntry.avatarColor || updated[lastSenderIdx].avatarColor,
+      avatarUrl: newEntry.avatarUrl || updated[lastSenderIdx].avatarUrl,
       shownAt: now,
     };
     return updated;

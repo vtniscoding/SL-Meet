@@ -62,7 +62,7 @@ export default function CaptionSettingsPopover({
       {/* Header */}
       <div className="flex items-center justify-between pb-2.5 border-b border-white/10">
         <div className="flex items-center space-x-1.5">
-          <TtFontSizeIcon className="w-4 h-4 text-[#8AB4F8]" />
+          <TtFontSizeIcon className="w-5 h-5 text-[#8AB4F8] shrink-0" size={20} />
           <h4 className="text-xs font-semibold tracking-wide text-slate-200">
             Caption Font Size
           </h4>

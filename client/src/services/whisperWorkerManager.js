@@ -6,6 +6,8 @@
 let sharedWorker = null;
 let isReady = false;
 let currentStatus = 'idle'; // 'idle' | 'loading' | 'ready' | 'error'
+let currentProgress = null; // number (0 - 100)
+let currentError = null;
 const listeners = new Set();
 
 export function getWhisperWorker() {
@@ -23,7 +25,18 @@ export function getWhisperWorker() {
           currentStatus = data.status;
           if (data.status === 'ready') {
             isReady = true;
+            currentProgress = 100;
+            currentError = null;
           }
+        }
+        if (data.type === 'progress') {
+          if (data.info && typeof data.info.progress === 'number') {
+            currentProgress = Math.round(data.info.progress);
+          }
+        }
+        if (data.type === 'error') {
+          currentStatus = 'error';
+          currentError = data.error || 'Failed to load Whisper model';
         }
         listeners.forEach((listener) => {
           try {
@@ -37,8 +50,9 @@ export function getWhisperWorker() {
       sharedWorker.onerror = (err) => {
         console.error('[WhisperWorkerManager] Worker error:', err);
         currentStatus = 'error';
+        currentError = err.message || 'Worker runtime error';
         listeners.forEach((listener) => {
-          listener({ type: 'error', error: err.message || 'Worker runtime error' });
+          listener({ type: 'error', error: currentError });
         });
       };
 
@@ -47,6 +61,7 @@ export function getWhisperWorker() {
     } catch (err) {
       console.error('[WhisperWorkerManager] Failed to create shared worker:', err);
       currentStatus = 'error';
+      currentError = err.message || 'Failed to initialize worker';
     }
   }
   return sharedWorker;
@@ -56,11 +71,16 @@ export function getWhisperStatus() {
   return {
     isReady,
     status: isReady ? 'ready' : currentStatus,
+    progress: currentProgress,
+    error: currentError,
   };
 }
 
 export function subscribeWhisperWorker(listener) {
   listeners.add(listener);
+  try {
+    listener({ type: 'status', ...getWhisperStatus() });
+  } catch (e) {}
   return () => {
     listeners.delete(listener);
   };

@@ -18,6 +18,38 @@ export { loadCustomDataset, getDatasetSummary, exportCurrentDataset };
 let globalHandsInstance = null;
 let currentResultsCallback = null;
 let initPromise = null;
+let mediaPipeStatus = 'idle';
+let mediaPipeError = null;
+const mediaPipeListeners = new Set();
+
+function notifyMediaPipeListeners() {
+  const current = getMediaPipeStatus();
+  mediaPipeListeners.forEach((listener) => {
+    try {
+      listener(current);
+    } catch (e) {
+      console.warn('[MediaPipe] Listener error:', e);
+    }
+  });
+}
+
+export function getMediaPipeStatus() {
+  return {
+    isReady: !!globalHandsInstance,
+    status: globalHandsInstance ? 'ready' : mediaPipeStatus,
+    error: mediaPipeError,
+  };
+}
+
+export function subscribeMediaPipeStatus(listener) {
+  mediaPipeListeners.add(listener);
+  try {
+    listener(getMediaPipeStatus());
+  } catch (e) {}
+  return () => {
+    mediaPipeListeners.delete(listener);
+  };
+}
 
 /**
  * Suppresses MediaPipe phantom double-detections on a single motion-blurred hand
@@ -121,8 +153,15 @@ export function sanitizeMediaPipeResults(results) {
  * Preload and warm up MediaPipe Hands WASM compiler and graph during app startup
  */
 export async function preloadMediaPipeHands() {
-  if (globalHandsInstance) return globalHandsInstance;
+  if (globalHandsInstance) {
+    mediaPipeStatus = 'ready';
+    notifyMediaPipeListeners();
+    return globalHandsInstance;
+  }
   if (initPromise) return initPromise;
+
+  mediaPipeStatus = 'loading';
+  notifyMediaPipeListeners();
 
   initPromise = (async () => {
     try {
@@ -151,9 +190,15 @@ export async function preloadMediaPipeHands() {
       }
 
       globalHandsInstance = hands;
+      mediaPipeStatus = 'ready';
+      mediaPipeError = null;
+      notifyMediaPipeListeners();
       return hands;
     } catch (err) {
       console.warn('[MediaPipe] Preload initialization warning:', err);
+      mediaPipeStatus = 'error';
+      mediaPipeError = err?.message || 'Failed to initialize MediaPipe WASM';
+      notifyMediaPipeListeners();
       return null;
     } finally {
       initPromise = null;
@@ -263,15 +308,13 @@ export function classifyGesture(landmarks, handedness, multiHandLandmarks, multi
   const handsList = multiHandLandmarks || (landmarks ? [landmarks] : []);
   const handednessList = multiHandedness || (handedness ? [handedness] : []);
 
-  if (handsList.length === 0) return { gesture: '', confidence: 0 };
-
-  // Strictly use Dataset Vector Classification (Admin Studio Data)
+  // Delegate even empty frames to dataset classifier so DTW recognizer can finalize end-of-stroke hand drops
   const datasetResult = classifyLandmarksWithDataset(handsList, handednessList);
-  
-  // Return the result directly from the dataset classifier (returns 'Signing...' by default)
   if (datasetResult) {
     return datasetResult;
   }
 
-  return { gesture: 'Signing...', confidence: 0.70 };
+  return handsList.length === 0
+    ? { gesture: '', confidence: 0 }
+    : { gesture: 'Signing...', confidence: 0.70 };
 }

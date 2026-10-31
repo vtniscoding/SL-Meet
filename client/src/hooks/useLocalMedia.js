@@ -21,6 +21,7 @@ export function useLocalMedia({ isActive = false } = {}) {
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [audioLevel, setAudioLevel] = useState(0);
   const [error, setError] = useState(null);
 
   // Keep refs synchronized for callbacks without stale closures
@@ -253,6 +254,7 @@ export function useLocalMedia({ isActive = false } = {}) {
   useEffect(() => {
     if (!localStream || isMuted) {
       setIsSpeaking(false);
+      setAudioLevel(0);
       return;
     }
 
@@ -273,6 +275,7 @@ export function useLocalMedia({ isActive = false } = {}) {
       const SILENCE_HOLD_MS = 350; // Hold active state across brief pauses between words
       const VOLUME_THRESHOLD = 10;
       let lastSpokenTime = 0;
+      let lastLevelTime = 0;
 
       const checkSpeaking = () => {
         analyser.getByteFrequencyData(dataArray);
@@ -283,6 +286,12 @@ export function useLocalMedia({ isActive = false } = {}) {
         }
         const average = sum / len;
         const now = Date.now();
+
+        if (now - lastLevelTime > 50) {
+          lastLevelTime = now;
+          const pct = Math.min(100, Math.max(0, Math.round((average / 50) * 100)));
+          setAudioLevel(pct);
+        }
 
         if (average > VOLUME_THRESHOLD) {
           lastSpokenTime = now;
@@ -304,6 +313,7 @@ export function useLocalMedia({ isActive = false } = {}) {
     }
 
     return () => {
+      setAudioLevel(0);
       if (animId) cancelAnimationFrame(animId);
       if (audioContext && audioContext.state !== 'closed') {
         audioContext.close();
@@ -410,6 +420,7 @@ export function useLocalMedia({ isActive = false } = {}) {
     isMuted,
     isCameraOff,
     isSpeaking,
+    audioLevel,
     error,
     audioDevices,
     videoDevices,

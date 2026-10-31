@@ -15,6 +15,7 @@ import {
 import { supabase } from '../../utils/supabase';
 import { brandLogo, andyNote } from '../../assets';
 import WindowControls from '../common/WindowControls';
+import ProfileAvatarMenu from '../common/ProfileAvatarMenu';
 import { useRoomHistory } from '../../hooks/useRoomHistory';
 import RoomHistoryCard from './RoomHistoryCard';
 
@@ -208,47 +209,11 @@ export default function UserDashboard({
         {/* Top-Right: [Avatar] [Minimize] [Maximize/Restore] [Close] */}
         <div className="flex items-center h-full space-x-2.5">
           {/* Compact Profile Avatar Button */}
-          <div
-            className="relative"
-            ref={menuRef}
-            style={{ WebkitAppRegion: 'no-drag' }}
-          >
-            <button
-              onClick={() => setIsMenuOpen((prev) => !prev)}
-              className="w-7 h-7 rounded-full bg-[#5CA0F2] hover:bg-[#4A8FE0] text-white font-bold text-xs flex items-center justify-center transition-all shadow-xs ring-1 ring-[#5CA0F2]/40 outline-none cursor-pointer"
-              title="Account profile"
-            >
-              {userInitial}
-            </button>
-
-            {/* Profile Dropdown Menu */}
-            {isMenuOpen && (
-              <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 p-3.5 z-50 animate-in fade-in duration-150">
-                <div className="flex items-center space-x-3 pb-3 border-b border-slate-100">
-                  <div className="w-10 h-10 rounded-full bg-[#5CA0F2] text-white font-bold text-sm flex items-center justify-center shrink-0">
-                    {userInitial}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-slate-900 truncate">{displayName}</p>
-                    <p className="text-xs text-slate-500 truncate">{user?.email}</p>
-                  </div>
-                </div>
-
-                <div className="pt-2">
-                  <button
-                    onClick={() => {
-                      setIsMenuOpen(false);
-                      onSignOut();
-                    }}
-                    className="w-full flex items-center space-x-2.5 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer outline-none"
-                  >
-                    <LogOut className="w-4 h-4 shrink-0" />
-                    <span>Log Out</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+          <ProfileAvatarMenu
+            user={user}
+            profile={profile}
+            onSignOut={onSignOut}
+          />
 
           {/* Windows 11 Native-Style Window Control Buttons */}
           <WindowControls />
@@ -256,7 +221,7 @@ export default function UserDashboard({
       </header>
 
       {/* 2. Main Body Area: [Sidebar | Dock 1 | Dock 2] (Balanced top spacing) */}
-      <div className="flex-1 flex overflow-hidden px-3 pb-3 pt-1 gap-2.5">
+      <div className="flex-1 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden px-3 pb-3 pt-1 gap-2.5 min-h-0">
         {/* Left Sidebar Rail (Zoom style icon column) */}
         <aside className="w-16 md:w-[70px] flex flex-col items-center justify-between py-2 shrink-0 select-none">
           {/* Top Group: Home, Chat, Meetings, More */}
@@ -384,8 +349,8 @@ export default function UserDashboard({
           </div>
         </section>
 
-        {/* DOCK 2: Right Panel (White Card, Fixed Width ~400-430px) */}
-        <section className="w-[380px] lg:w-[410px] xl:w-[430px] shrink-0 bg-white rounded-xl border border-slate-200/80 shadow-xs p-5 md:p-6 flex flex-col h-full overflow-hidden relative">
+        {/* DOCK 2: Right Panel (White Card, Fixed Width ~340-430px on desktop) */}
+        <section className="w-full md:w-[340px] lg:w-[410px] xl:w-[430px] shrink-0 bg-white rounded-xl border border-slate-200/80 shadow-xs p-5 md:p-6 flex flex-col h-full overflow-hidden relative">
           {/* Live Date & Time Widget Card (Zoom Workplace style) */}
           <div className="w-full bg-gradient-to-br from-[#1E293B] to-[#0F172A] text-white rounded-xl p-5 shadow-sm relative overflow-hidden shrink-0">
             <div className="relative z-10">

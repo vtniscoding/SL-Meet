@@ -15,6 +15,7 @@ import WaitingLobby from './components/room/WaitingLobby';
 import AdminGestureStudio from './components/admin/AdminGestureStudio';
 import UserDashboard from './components/dashboard/UserDashboard';
 import AuthModal from './components/auth/AuthModal';
+import ProfileAvatarMenu from './components/common/ProfileAvatarMenu';
 import { useLocalMedia } from './hooks/useLocalMedia';
 import { useSocket } from './hooks/useSocket';
 import { useAuth } from './context/AuthContext';
@@ -327,6 +328,9 @@ export default function App() {
         onBackHome={handleBackHomeFromLobby}
         initialDisplayName={userDisplayName || profile?.display_name || (user ? user.email?.split('@')[0] : '')}
         isAuthenticated={!!user}
+        user={user}
+        profile={profile}
+        onSignOut={handleSignOut}
       />
     );
   }
@@ -341,6 +345,7 @@ export default function App() {
           mediaState={mediaState}
           userName={userDisplayName || (user ? user.email?.split('@')[0] : 'Participant')}
           currentUser={user}
+          profile={profile}
           initialRole={userRole}
         />
       </ErrorBoundary>
@@ -371,13 +376,20 @@ export default function App() {
 
         {/* Top-Right: [Sign In CTA] [Minimize] [Maximize/Restore] [Close] */}
         <div className="flex items-center h-full space-x-2.5">
+          {user && (
+            <ProfileAvatarMenu
+              user={user}
+              profile={profile}
+              onSignOut={handleSignOut}
+            />
+          )}
           <button
             onClick={() => {
               setAuthModalMode('login');
               setAuthModalOpen(true);
             }}
             style={{ WebkitAppRegion: 'no-drag' }}
-            className="text-xs font-semibold px-3 py-1.5 rounded-full bg-white hover:bg-slate-100 text-[#0B57D0] border border-slate-200/80 shadow-xs transition-colors cursor-pointer"
+            className={`text-xs font-semibold px-3 py-1.5 rounded-full bg-white hover:bg-slate-100 text-[#0B57D0] border border-slate-200/80 shadow-xs transition-colors cursor-pointer ${user ? 'hidden' : 'block'}`}
           >
             Sign In
           </button>
@@ -461,7 +473,7 @@ export default function App() {
         <div
           onMouseEnter={() => setIsHoveringCard(true)}
           onMouseLeave={handleCardMouseLeave}
-          className="flex-1 bg-white rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-center p-6 md:p-8 lg:p-12 overflow-hidden relative group/card transition-colors duration-500"
+          className="flex-1 bg-white rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-center p-4 sm:p-6 md:p-8 lg:p-12 overflow-y-auto min-h-0 relative group/card transition-colors duration-500"
         >
           {/* Vignetting Effect: Deep Ocean Blue Inner Shadow & Edge Vignette on Container Hover */}
           <div
@@ -474,7 +486,7 @@ export default function App() {
           />
 
           {/* Main Hero Section */}
-          <main className="w-full flex-1 flex flex-col lg:flex-row items-center justify-between gap-6 lg:gap-10 my-auto overflow-hidden relative z-10">
+          <main className="w-full flex-1 flex flex-col lg:flex-row items-center justify-between gap-6 lg:gap-10 my-auto overflow-y-auto lg:overflow-hidden relative z-10 py-2">
             {/* Left Column: Title & Buttons */}
             <div className="w-full lg:w-[44%] xl:w-[42%] shrink-0 space-y-4">
               {/* Title: Equal font size for both lines */}

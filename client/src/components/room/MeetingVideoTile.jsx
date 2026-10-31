@@ -5,6 +5,7 @@ import {
   PinIcon as Pin,
   UnpinIcon as PinOff,
 } from '../../icons';
+import ParticipantAvatar from '../common/ParticipantAvatar';
 
 /**
  * Semantic Component: Renders a single 16:9 video tile with stream attachment,
@@ -74,13 +75,17 @@ export default function MeetingVideoTile({
         } ${isCameraOff && !isScreenSharing ? 'hidden' : 'block'}`}
       />
 
-      {/* Camera Off Avatar Fallback (Zoom-Style: Profile Avatar with Gray Background) */}
+      {/* Camera Off Avatar Fallback (Consistent Avatar with Custom Upload / Assigned Color) */}
       {!isScreenSharing && (isCameraOff || (!isLocal && (!hasStream || !hasLiveVideo))) && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#202124] text-slate-300 p-2 sm:p-4 space-y-1 sm:space-y-2 select-none">
-          {/* Centered Circular Profile Avatar with Neutral Gray Background */}
-          <div className="w-11 h-11 sm:w-16 sm:h-16 md:w-20 md:h-20 aspect-square shrink-0 rounded-full bg-[#3C4043] border border-white/10 flex items-center justify-center text-white text-base sm:text-xl md:text-2xl font-semibold shadow-inner select-none">
-            {initialLetter || <User className="w-5 h-5 sm:w-8 sm:h-8 text-slate-300" />}
-          </div>
+          <ParticipantAvatar
+            name={name}
+            id={id}
+            avatarUrl={participant?.avatarUrl}
+            avatarColor={participant?.avatarColor}
+            className="w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 aspect-square text-base sm:text-xl md:text-2xl font-semibold border border-white/10 shadow-inner"
+            iconSize="w-6 h-6 sm:w-8 sm:h-8"
+          />
           {!hasStream && !isLocal && (
             <span className="text-[10px] sm:text-[11px] text-slate-400 font-medium truncate max-w-[90%]">Connecting...</span>
           )}

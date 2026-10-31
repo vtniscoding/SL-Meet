@@ -31,6 +31,8 @@ export function useCaptionFeed(captionMap = {}, { frozen = false } = {}) {
         const incoming = {
           senderId,
           senderName: cap.senderName || 'Speaker',
+          avatarColor: cap.avatarColor,
+          avatarUrl: cap.avatarUrl,
           text: cap.text,
           isFinal: !!cap.isFinal,
           timestamp: cap.timestamp || Date.now(),

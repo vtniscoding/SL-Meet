@@ -47,6 +47,9 @@ export function useAslAggregator(
   }, []);
   const lastAddedTimeRef = useRef(0);
   const lastSenderRef = useRef('You');
+  const lastSenderIdRef = useRef('local');
+  const lastSenderAvatarColorRef = useRef(null);
+  const lastSenderAvatarUrlRef = useRef(null);
   const timerRef = useRef(null);
 
   // Post-Phrase Lockout & Hold Suppression Refs
@@ -84,6 +87,9 @@ export function useAslAggregator(
         timestamp,
         time,
         sender: lastSenderRef.current,
+        senderId: lastSenderIdRef.current,
+        avatarColor: lastSenderAvatarColorRef.current,
+        avatarUrl: lastSenderAvatarUrlRef.current,
         type: 'ASL',
         text,
       },
@@ -163,7 +169,7 @@ export function useAslAggregator(
   }, []);
 
   const pushGesture = useCallback(
-    (senderName = 'You', rawGesture, confidence = 0.9) => {
+    (senderName = 'You', rawGesture, confidence = 0.9, options = {}) => {
       if (!rawGesture) {
         notifyHandReset();
         return;
@@ -176,8 +182,18 @@ export function useAslAggregator(
       const cleanToken = normalizeGestureToken(rawGesture);
       if (!cleanToken) return;
 
+      const isDynamicGesture = options?.mode === 'dynamic';
       const now = Date.now();
       lastSenderRef.current = senderName;
+      if (options?.senderId) {
+        lastSenderIdRef.current = options.senderId;
+      }
+      if (options?.avatarColor) {
+        lastSenderAvatarColorRef.current = options.avatarColor;
+      }
+      if (options?.avatarUrl) {
+        lastSenderAvatarUrlRef.current = options.avatarUrl;
+      }
 
       // A. Hold Suppression Guard
       // If user is STILL HOLDING the exact same sign that finished the phrase or word:
@@ -226,15 +242,17 @@ export function useAslAggregator(
       }
 
       // 3. Confirm Token
+      // Dynamic DTW gestures already validated a full 24-frame temporal sequence, so confirm immediately!
       const isLetter = isAlphabetLetter(cleanToken);
-      // Require at least 5 steady frames (~170ms) to ensure user settled on the sign,
-      // completely eliminating transient glitches between similar signs (A -> M -> N)
-      const effectiveStabilityFrames = isLetter
+      const effectiveStabilityFrames = isDynamicGesture
+        ? 1
+        : isLetter
         ? Math.max(5, stabilityFramesNeeded - 1)
         : stabilityFramesNeeded;
 
-      const isStreakConfirmed =
-        streakRef.current.count >= effectiveStabilityFrames && confidence >= 0.76;
+      const isStreakConfirmed = isDynamicGesture
+        ? confidence >= 0.72
+        : streakRef.current.count >= effectiveStabilityFrames && confidence >= 0.76;
       const isMajorityConfirmed =
         windowRef.current.length >= 7 &&
         maxCount / windowRef.current.length >= MAJORITY_THRESHOLD &&
@@ -362,9 +380,13 @@ export function useAslAggregator(
       const currentBuffer = bufferRef.current;
       const lastToken = currentBuffer[currentBuffer.length - 1];
 
-      if (lastToken !== confirmedToken) {
+      const isNewRepeatDynamicLetter =
+        isDynamicGesture && isLetter && now - lastAddedTimeRef.current >= 820;
+
+      if (lastToken !== confirmedToken || isNewRepeatDynamicLetter) {
         currentBuffer.push(confirmedToken);
         lastAddedTimeRef.current = now;
+        lastEmittedTokenRef.current = confirmedToken.toLowerCase();
         streakRef.current = { token: confirmedToken, count: 0 };
         windowRef.current = [];
 

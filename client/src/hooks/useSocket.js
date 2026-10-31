@@ -62,6 +62,8 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
             text: data.text,
             isFinal: !!data.isFinal,
             senderName: data.senderName,
+            avatarColor: data.avatarColor,
+            avatarUrl: data.avatarUrl,
             timestamp: data.timestamp || Date.now(),
           },
         }));
@@ -132,7 +134,16 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
       const userName = data.userMeta?.name || `Participant ${data.userId.slice(0, 4)}`;
       setRoomUsers((prev) => {
         if (prev.some((u) => u.userId === data.userId)) return prev;
-        return [...prev, { userId: data.userId, role: data.role || data.userMeta?.role || 'non_signer', userMeta: data.userMeta }];
+        return [
+          ...prev,
+          {
+            userId: data.userId,
+            role: data.role || data.userMeta?.role || 'non_signer',
+            avatarColor: data.userMeta?.avatarColor || data.avatarColor || null,
+            avatarUrl: data.userMeta?.avatarUrl || data.avatarUrl || null,
+            userMeta: data.userMeta,
+          },
+        ];
       });
       setChatMessages((prev) => [
         ...prev,
@@ -293,6 +304,15 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
     }
   };
 
+  const endRoom = () => {
+    const socket = getSocket(serverUrl);
+    if (socket.connected && currentRoom) {
+      socket.emit('end_room', { roomId: currentRoom });
+      addLog(`Ended room for everyone: ${currentRoom}`, 'warning');
+      leaveRoom();
+    }
+  };
+
   const sendGesture = (gestureData) => {
     const socket = getSocket(serverUrl);
     if (socket.connected && currentRoom) {
@@ -300,6 +320,7 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
         roomId: currentRoom,
         gesture: gestureData.gesture,
         confidence: gestureData.confidence,
+        mode: gestureData.mode,
         timestamp: Date.now(),
       });
     }
@@ -364,13 +385,17 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
     }
   };
 
-  const sendSpeechCaption = (text, isFinal = false) => {
+  const sendSpeechCaption = (text, isFinal = false, extraMeta = {}) => {
     const socket = getSocket(serverUrl);
     if (socket.connected && currentRoom && text && text.trim().length > 0) {
       socket.emit('speech_caption', {
         roomId: currentRoom,
         text: text.trim(),
         isFinal: !!isFinal,
+        senderId: extraMeta?.senderId,
+        senderName: extraMeta?.senderName,
+        avatarColor: extraMeta?.avatarColor,
+        avatarUrl: extraMeta?.avatarUrl,
       });
     }
   };
@@ -395,6 +420,7 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
     toggleConnection,
     joinRoom,
     leaveRoom,
+    endRoom,
     sendGesture,
     sendPresentingStatus,
     sendMediaStatusChange,

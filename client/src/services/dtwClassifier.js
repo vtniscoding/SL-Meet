@@ -1,21 +1,31 @@
 /**
  * Dynamic Time Warping (DTW) Sequence Engine for Continuous Motion Sign Recognition
  *
- * - Captures both normalized handshape articulation (63D / 126D) AND palm-scaled
- *   spatial wrist + index-tip trajectories so arm sweeps and wrist-pivoted waves
- *   are accurately distinguished regardless of execution speed.
+ * - Captures both normalized handshape articulation (63D / 126D) AND scale-invariant
+ *   spatial wrist + index-tip trajectories with tangent velocity vectors.
+ * - Canonicalizes both newly recorded and existing DB sequences (auto-trimming idle
+ *   hold plateaus while preserving sharp multi-stroke corners such as ASL letter 'Z').
  * - Coexists 100% non-destructively alongside static 1D k-NN vectors in `asl_gestures`.
  */
 
 export const DTW_KEYFRAMES = 24;
-export const DTW_BAND_RADIUS = 5;
-export const DTW_MATCH_THRESHOLD = 1.18;
-export const MIN_DYNAMIC_MOTION_AMPLITUDE = 0.30;
+export const DTW_BAND_RADIUS = 7;
+export const DTW_MATCH_THRESHOLD = 1.05;
+export const MIN_DYNAMIC_MOTION_AMPLITUDE = 0.35;
 
+// Legacy storage feature multipliers (preserved in stored JSON vectors for backward compatibility)
 const W_WRIST_XY = 1.5;
 const W_WRIST_Z = 0.8;
 const W_INDEX_XY = 1.3;
 const W_VEL_XY = 1.1;
+
+// Balanced DTW cost weights: trajectory shape & unit stroke direction dominate,
+// while handshape pose cleanly rejects wrong finger/palm configurations without motion-blur false rejections
+const COST_WEIGHT_POSE = 0.22;
+const COST_WEIGHT_TRAJ = 1.35;
+
+// WeakMap cache so stored dataset sequences are canonicalized only once in O(1) on subsequent frames
+const canonicalCache = new WeakMap();
 
 function clamp(val, min, max) {
   return Math.min(max, Math.max(min, val));
@@ -40,10 +50,6 @@ export function isDynamicSample(sample) {
 
 /**
  * Extracts raw per-frame ingredients from smoothed MediaPipe landmarks (1 or 2 hands)
- *
- * @param {Array} smoothedHands - 1 or 2 hand landmark arrays (each 21 {x, y, z})
- * @param {Function} normalizePoseFn - normalizeMultiHandLandmarks function
- * @returns {Object|null} Raw frame item ready for temporal resampling
  */
 export function extractDynamicFrame(smoothedHands, normalizePoseFn) {
   if (!smoothedHands || smoothedHands.length === 0) return null;
@@ -91,7 +97,8 @@ export function extractDynamicFrame(smoothedHands, normalizePoseFn) {
 }
 
 /**
- * Computes normalized step motion speed between two consecutive dynamic frames (in palm units)
+ * Computes pure spatial wrist + index-tip step speed (in palm units) between consecutive frames.
+ * Excludes finger micro-twitches so stationary end-holds trim cleanly without false motion spikes.
  */
 export function computeFrameStepSpeed(prevFrame, curFrame) {
   if (!prevFrame || !curFrame || prevFrame.handCount !== curFrame.handCount) {
@@ -110,31 +117,70 @@ export function computeFrameStepSpeed(prevFrame, curFrame) {
       curFrame.indexTips[h].x - prevFrame.indexTips[h].x,
       curFrame.indexTips[h].y - prevFrame.indexTips[h].y
     );
-    spatialDisp += (dw + di) * 0.5;
+    spatialDisp += Math.max(dw, di) * 0.7 + Math.min(dw, di) * 0.3;
   }
-  spatialDisp /= curFrame.handCount * scale;
 
-  // Include subtle finger articulation speed for in-place finger dynamic signs
-  let poseDiffSum = 0;
-  const len = Math.min(prevFrame.pose.length, curFrame.pose.length);
-  for (let i = 0; i < len; i++) {
-    poseDiffSum += Math.abs(curFrame.pose[i] - prevFrame.pose[i]);
+  return spatialDisp / (curFrame.handCount * scale);
+}
+
+/**
+ * Computes 3-point smoothed step speed array so 1-2 frame corner turns stay active
+ * while true leading/trailing stillness plateaus drop cleanly below threshold.
+ */
+function smoothSpeedProfile(rawSpeeds) {
+  const n = rawSpeeds.length;
+  const out = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const prev = i > 0 ? rawSpeeds[i - 1] : rawSpeeds[i];
+    const cur = rawSpeeds[i];
+    const next = i < n - 1 ? rawSpeeds[i + 1] : rawSpeeds[i];
+    out[i] = (prev + 2 * cur + next) / 4;
   }
-  const poseDisp = len > 0 ? (poseDiffSum / len) * 0.6 : 0;
+  return out;
+}
 
-  return spatialDisp + poseDisp;
+/**
+ * Trims leading & trailing stillness plateaus from a speed profile while keeping 1 anchor frame
+ */
+function findActiveTrimBounds(rawSpeeds, minLen = 6) {
+  const n = rawSpeeds.length;
+  if (n <= minLen) return [0, n - 1];
+
+  const smooth = smoothSpeedProfile(rawSpeeds);
+  let peak = 0;
+  for (let i = 1; i < n; i++) {
+    if (smooth[i] > peak) peak = smooth[i];
+  }
+
+  const thresh = Math.max(0.038, peak * 0.18);
+  let first = 1;
+  let last = n - 1;
+
+  while (first < n - 1 && smooth[first] < thresh) {
+    first += 1;
+  }
+  while (last > first && smooth[last] < thresh) {
+    last -= 1;
+  }
+
+  let startIdx = Math.max(0, first - 1);
+  let endIdx = Math.min(n - 1, last + 1);
+
+  if (endIdx - startIdx + 1 < minLen) {
+    const mid = Math.floor((startIdx + endIdx) / 2);
+    startIdx = Math.max(0, mid - Math.floor(minLen / 2));
+    endIdx = Math.min(n - 1, startIdx + minLen - 1);
+  }
+
+  return [startIdx, endIdx];
 }
 
 /**
  * Trims idle stillness, resamples to `targetLen` (24) uniform keyframes, and builds
  * 70D (1-hand) or 140D (2-hand) pose + start-anchored trajectory descriptors.
- *
- * @param {Array} rawFrames - List of objects from extractDynamicFrame
- * @param {number} targetLen - Resampled keyframe count (default 24)
- * @returns {Object|null} { sequence, handCount, featureDim, keptFrames, motionAmplitude, qualityScore }
  */
 export function buildDynamicSequence(rawFrames, targetLen = DTW_KEYFRAMES) {
-  if (!Array.isArray(rawFrames) || rawFrames.length < 7) return null;
+  if (!Array.isArray(rawFrames) || rawFrames.length < 6) return null;
 
   // 1. Keep frames matching the dominant hand count (1 or 2 hands)
   const counts = { 1: 0, 2: 0 };
@@ -148,47 +194,24 @@ export function buildDynamicSequence(rawFrames, targetLen = DTW_KEYFRAMES) {
     (f) => f && f.handCount === dominantHandCount
   );
 
-  if (consistentFrames.length < 7) return null;
+  if (consistentFrames.length < 6) return null;
 
-  // 2. Compute per-step speed and auto-trim leading/trailing dead stillness
-  const speeds = [0];
-  let peakSpeed = 0;
+  // 2. Smooth speed profile & trim leading/trailing dead holds (preserving sharp corners like 'Z')
+  const rawSpeeds = [0];
   for (let i = 1; i < consistentFrames.length; i++) {
-    const sp = computeFrameStepSpeed(consistentFrames[i - 1], consistentFrames[i]);
-    speeds.push(sp);
-    if (sp > peakSpeed) peakSpeed = sp;
+    rawSpeeds.push(computeFrameStepSpeed(consistentFrames[i - 1], consistentFrames[i]));
   }
 
-  const onsetThresh = Math.max(0.03, peakSpeed * 0.18);
-  let firstActive = 0;
-  let lastActive = consistentFrames.length - 1;
-
-  while (firstActive < consistentFrames.length - 1 && speeds[firstActive] < onsetThresh) {
-    firstActive += 1;
-  }
-  while (lastActive > firstActive && speeds[lastActive] < onsetThresh) {
-    lastActive -= 1;
-  }
-
-  // Keep 2 anchor frames before onset and after settle to preserve start/end handshapes
-  let startIdx = Math.max(0, firstActive - 2);
-  let endIdx = Math.min(consistentFrames.length - 1, lastActive + 2);
-
-  if (endIdx - startIdx + 1 < 8) {
-    const mid = Math.floor((startIdx + endIdx) / 2);
-    startIdx = Math.max(0, mid - 4);
-    endIdx = Math.min(consistentFrames.length - 1, startIdx + 8);
-  }
-
+  const [startIdx, endIdx] = findActiveTrimBounds(rawSpeeds, 6);
   const trimmed = consistentFrames.slice(startIdx, endIdx + 1);
-  if (trimmed.length < 6) return null;
+  if (trimmed.length < 5) return null;
 
   // 3. Linear temporal resampling to exact `targetLen` (24) keyframes
   const resampled = [];
   const srcMax = trimmed.length - 1;
 
   for (let k = 0; k < targetLen; k++) {
-    const pos = (k / (targetLen - 1)) * srcMax;
+    const pos = srcMax === 0 ? 0 : (k / (targetLen - 1)) * srcMax;
     const i0 = Math.floor(pos);
     const i1 = Math.min(srcMax, i0 + 1);
     const t = pos - i0;
@@ -245,17 +268,17 @@ export function buildDynamicSequence(rawFrames, targetLen = DTW_KEYFRAMES) {
       const midVy = ((curMidY - prevMidY) / avgScale) * 2.5;
 
       if (k > 0) {
-        motionAmplitude +=
+        const dw =
           Math.hypot(
             cur.wrists[h].x - prev.wrists[h].x,
             cur.wrists[h].y - prev.wrists[h].y
-          ) /
-            avgScale +
+          ) / avgScale;
+        const di =
           Math.hypot(
             cur.indexTips[h].x - prev.indexTips[h].x,
             cur.indexTips[h].y - prev.indexTips[h].y
-          ) /
-            avgScale;
+          ) / avgScale;
+        motionAmplitude += Math.max(dw, di);
       }
 
       trajFeatures.push(
@@ -275,7 +298,7 @@ export function buildDynamicSequence(rawFrames, targetLen = DTW_KEYFRAMES) {
 
   motionAmplitude = parseFloat((motionAmplitude / dominantHandCount).toFixed(3));
 
-  const frameCoverageScore = clamp((trimmed.length / 18) * 50, 15, 50);
+  const frameCoverageScore = clamp((trimmed.length / 16) * 50, 15, 50);
   const amplitudeScore = clamp((motionAmplitude / 0.85) * 50, 10, 50);
   const qualityScore = Math.round(clamp(frameCoverageScore + amplitudeScore, 25, 99));
 
@@ -290,43 +313,215 @@ export function buildDynamicSequence(rawFrames, targetLen = DTW_KEYFRAMES) {
 }
 
 /**
- * Computes Sakoe-Chiba banded DTW distance between two 2D keyframe sequences.
- * Normalized by path weight and sqrt(dim / 70) so 1-hand (70D) and 2-hand (140D)
- * share a single calibrated distance scale (~0.20 identical .. 1.18 threshold).
+ * Canonicalizes ANY 2D sequence (including pre-existing DB rows with trailing hold frames)
+ * into a 24-keyframe Scale-Invariant Trajectory + Handshape representation.
+ * Cached via WeakMap so dataset samples are canonicalized only once in memory.
+ */
+export function canonicalizeDynamicSequence(seq, targetLen = DTW_KEYFRAMES) {
+  if (!Array.isArray(seq) || seq.length < 4 || !Array.isArray(seq[0])) return null;
+
+  const cached = canonicalCache.get(seq);
+  if (cached) return cached;
+
+  const dim = seq[0].length;
+  const handCount = dim >= 130 ? 2 : 1;
+  const poseDim = handCount === 2 ? 126 : 63;
+  if (dim < poseDim + handCount * 7) return null;
+
+  // 1. Decode un-weighted trajectory points per frame
+  const decoded = seq.map((row) => {
+    const pose = row.slice(0, poseDim);
+    const hands = [];
+    for (let h = 0; h < handCount; h++) {
+      const base = poseDim + h * 7;
+      hands.push({
+        wx: row[base + 0] / W_WRIST_XY,
+        wy: row[base + 1] / W_WRIST_XY,
+        wz: row[base + 2] / W_WRIST_Z,
+        ix: row[base + 3] / W_INDEX_XY,
+        iy: row[base + 4] / W_INDEX_XY,
+      });
+    }
+    return { pose, hands };
+  });
+
+  // 2. Strip any leading or trailing stationary hold plateaus (e.g. holding finger still after 'Z')
+  const stepSpeeds = [0];
+  for (let i = 1; i < decoded.length; i++) {
+    let step = 0;
+    for (let h = 0; h < handCount; h++) {
+      const p = decoded[i - 1].hands[h];
+      const c = decoded[i].hands[h];
+      const dw = Math.hypot(c.wx - p.wx, c.wy - p.wy);
+      const di = Math.hypot(c.ix - p.ix, c.iy - p.iy);
+      step += Math.max(dw, di);
+    }
+    stepSpeeds.push(step / handCount);
+  }
+
+  const [sIdx, eIdx] = findActiveTrimBounds(stepSpeeds, 6);
+  const activeSlice = decoded.slice(sIdx, eIdx + 1);
+  const srcMax = activeSlice.length - 1;
+
+  // 3. Resample active stroke cleanly across `targetLen` (24) keyframes
+  const resampled = [];
+  for (let k = 0; k < targetLen; k++) {
+    const pos = srcMax === 0 ? 0 : (k / (targetLen - 1)) * srcMax;
+    const i0 = Math.floor(pos);
+    const i1 = Math.min(srcMax, i0 + 1);
+    const t = pos - i0;
+
+    const a = activeSlice[i0];
+    const b = activeSlice[i1];
+
+    const pose = new Float64Array(poseDim);
+    for (let d = 0; d < poseDim; d++) {
+      pose[d] = lerp(a.pose[d], b.pose[d], t);
+    }
+
+    const hands = [];
+    for (let h = 0; h < handCount; h++) {
+      hands.push({
+        wx: lerp(a.hands[h].wx, b.hands[h].wx, t),
+        wy: lerp(a.hands[h].wy, b.hands[h].wy, t),
+        wz: lerp(a.hands[h].wz, b.hands[h].wz, t),
+        ix: lerp(a.hands[h].ix, b.hands[h].ix, t),
+        iy: lerp(a.hands[h].iy, b.hands[h].iy, t),
+      });
+    }
+    resampled.push({ pose, hands });
+  }
+
+  // 4. Re-anchor origin at keyframe 0 and compute independent wrist & fingertip spans
+  // so shoulder-drawn 'Z' and wrist-pivoted 'Z' produce identical normalized fingertip curves!
+  const originHands = resampled[0].hands.map((h) => ({ ...h }));
+  const handSpans = Array.from({ length: handCount }, () => ({
+    minWx: 0, maxWx: 0, minWy: 0, maxWy: 0,
+    minIx: 0, maxIx: 0, minIy: 0, maxIy: 0,
+  }));
+
+  for (let k = 0; k < targetLen; k++) {
+    for (let h = 0; h < handCount; h++) {
+      const pt = resampled[k].hands[h];
+      pt.wx -= originHands[h].wx;
+      pt.wy -= originHands[h].wy;
+      pt.wz -= originHands[h].wz;
+      pt.ix -= originHands[h].ix;
+      pt.iy -= originHands[h].iy;
+
+      const sp = handSpans[h];
+      sp.minWx = Math.min(sp.minWx, pt.wx);
+      sp.maxWx = Math.max(sp.maxWx, pt.wx);
+      sp.minWy = Math.min(sp.minWy, pt.wy);
+      sp.maxWy = Math.max(sp.maxWy, pt.wy);
+      sp.minIx = Math.min(sp.minIx, pt.ix);
+      sp.maxIx = Math.max(sp.maxIx, pt.ix);
+      sp.minIy = Math.min(sp.minIy, pt.iy);
+      sp.maxIy = Math.max(sp.maxIy, pt.iy);
+    }
+  }
+
+  const normFactors = handSpans.map((sp) => {
+    const wSpan = Math.max(sp.maxWx - sp.minWx, sp.maxWy - sp.minWy, 0.45);
+    const iSpan = Math.max(sp.maxIx - sp.minIx, sp.maxIy - sp.minIy, 0.40);
+    return { wSpan, iSpan };
+  });
+
+  // 5. Build canonical frame descriptors: normalized positions + unit tangent stroke direction
+  const frames = [];
+  for (let k = 0; k < targetLen; k++) {
+    const prevK = Math.max(0, k - 2);
+    const nextK = Math.min(targetLen - 1, k + 2);
+
+    const traj = new Float64Array(handCount * 7);
+    for (let h = 0; h < handCount; h++) {
+      const curH = resampled[k].hands[h];
+      const prevH = resampled[prevK].hands[h];
+      const nextH = resampled[nextK].hands[h];
+      const { wSpan, iSpan } = normFactors[h];
+
+      const wxN = curH.wx / wSpan;
+      const wyN = curH.wy / wSpan;
+      const wzN = clamp(curH.wz / Math.max(wSpan, iSpan), -1.0, 1.0);
+      const ixN = curH.ix / iSpan;
+      const iyN = curH.iy / iSpan;
+
+      // Unit stroke tangent direction (separates Right -> Diag -> Right 'Z' from straight down or horizontal wave)
+      const rawDx = (nextH.ix - prevH.ix) / iSpan * 0.75 + (nextH.wx - prevH.wx) / wSpan * 0.25;
+      const rawDy = (nextH.iy - prevH.iy) / iSpan * 0.75 + (nextH.wy - prevH.wy) / wSpan * 0.25;
+      const mag = Math.hypot(rawDx, rawDy);
+      const dirScale = mag > 0.04 ? 1 / mag : mag / 0.04;
+      const uVx = rawDx * dirScale;
+      const uVy = rawDy * dirScale;
+
+      const base = h * 7;
+      traj[base + 0] = wxN * 0.65;
+      traj[base + 1] = wyN * 0.65;
+      traj[base + 2] = wzN * 0.35;
+      traj[base + 3] = ixN * 1.25;
+      traj[base + 4] = iyN * 1.25;
+      traj[base + 5] = uVx * 0.95;
+      traj[base + 6] = uVy * 0.95;
+    }
+
+    frames.push({
+      pose: resampled[k].pose,
+      traj,
+    });
+  }
+
+  const canonical = { handCount, poseDim, frames };
+  canonicalCache.set(seq, canonical);
+  return canonical;
+}
+
+/**
+ * Computes Sakoe-Chiba banded DTW distance between two 2D keyframe sequences
+ * using balanced Handshape Pose + Scale-Invariant Trajectory costs.
  */
 export function computeDTWDistance(seqA, seqB, bandRadius = DTW_BAND_RADIUS) {
-  if (!Array.isArray(seqA) || !Array.isArray(seqB) || seqA.length === 0 || seqB.length === 0) {
+  const canA = canonicalizeDynamicSequence(seqA);
+  const canB = canonicalizeDynamicSequence(seqB);
+
+  if (!canA || !canB || canA.handCount !== canB.handCount) {
     return Infinity;
   }
 
-  const dimA = seqA[0]?.length || 0;
-  const dimB = seqB[0]?.length || 0;
-  if (dimA === 0 || Math.abs(dimA - dimB) > 6) {
-    return Infinity;
-  }
+  const handCount = canA.handCount;
+  const poseDim = canA.poseDim;
+  const trajDim = handCount * 7;
+  const poseScale = Math.sqrt(handCount);
+  const trajScale = Math.sqrt(handCount * 2.5);
 
-  const compareDim = Math.min(dimA, dimB);
-  const dimScale = Math.sqrt(compareDim / 70);
-  const n = seqA.length;
-  const m = seqB.length;
+  const n = canA.frames.length;
+  const m = canB.frames.length;
   const band = Math.max(bandRadius, Math.abs(n - m) + 2);
 
   const dp = Array.from({ length: n }, () => new Float64Array(m).fill(Infinity));
   const steps = Array.from({ length: n }, () => new Float64Array(m).fill(1));
 
   const frameCost = (i, j) => {
-    const a = seqA[i];
-    const b = seqB[j];
-    let sumSq = 0;
-    for (let d = 0; d < compareDim; d++) {
-      const diff = a[d] - b[d];
-      sumSq += diff * diff;
+    const fA = canA.frames[i];
+    const fB = canB.frames[j];
+
+    let poseSq = 0;
+    for (let d = 0; d < poseDim; d++) {
+      const diff = fA.pose[d] - fB.pose[d];
+      poseSq += diff * diff;
     }
-    let dist = Math.sqrt(sumSq) / dimScale;
-    // Emphasize start & end anchor handshapes
-    if (i === 0 && j === 0) dist *= 1.35;
-    else if (i === n - 1 && j === m - 1) dist *= 1.45;
-    return dist;
+    const poseDist = Math.sqrt(poseSq) / poseScale;
+
+    let trajSq = 0;
+    for (let t = 0; t < trajDim; t++) {
+      const diff = fA.traj[t] - fB.traj[t];
+      trajSq += diff * diff;
+    }
+    const trajDist = Math.sqrt(trajSq) / trajScale;
+
+    let cost = COST_WEIGHT_POSE * poseDist + COST_WEIGHT_TRAJ * trajDist;
+    if (i === 0 && j === 0) cost *= 1.25;
+    else if (i === n - 1 && j === m - 1) cost *= 1.35;
+    return cost;
   };
 
   for (let i = 0; i < n; i++) {
@@ -336,8 +531,8 @@ export function computeDTWDistance(seqA, seqB, bandRadius = DTW_BAND_RADIUS) {
     for (let j = jStart; j <= jEnd; j++) {
       const cost = frameCost(i, j);
       if (i === 0 && j === 0) {
-        dp[0][0] = cost * 1.35;
-        steps[0][0] = 1.35;
+        dp[0][0] = cost * 1.25;
+        steps[0][0] = 1.25;
         continue;
       }
 
@@ -358,7 +553,7 @@ export function computeDTWDistance(seqA, seqB, bandRadius = DTW_BAND_RADIUS) {
       }
 
       if (prevCost < Infinity) {
-        const w = i === n - 1 && j === m - 1 ? 1.45 : 1.0;
+        const w = i === n - 1 && j === m - 1 ? 1.35 : 1.0;
         dp[i][j] = prevCost + cost;
         steps[i][j] = prevWeight + w;
       }
@@ -395,7 +590,10 @@ export function matchDynamicSequence(candidateSeq, dynamicSamples) {
   if (ranked.length === 0) return null;
 
   const topCandidates = ranked.slice(0, 3).map((item) => {
-    const sim = clamp(1 - item.distance / (DTW_MATCH_THRESHOLD * 1.45), 0.05, 0.99);
+    const sim =
+      item.distance < DTW_MATCH_THRESHOLD
+        ? clamp(1.0 - (item.distance / DTW_MATCH_THRESHOLD) * 0.25, 0.75, 0.98)
+        : clamp(0.74 * (1 - (item.distance - DTW_MATCH_THRESHOLD) / 1.2), 0.05, 0.74);
     return {
       name: item.name,
       distance: parseFloat(item.distance.toFixed(2)),
@@ -413,8 +611,8 @@ export function matchDynamicSequence(candidateSeq, dynamicSamples) {
 
   if (best.distance < DTW_MATCH_THRESHOLD && margin >= 0.10) {
     const distRatio = best.distance / DTW_MATCH_THRESHOLD;
-    const baseConf = Math.max(0.72, 1.0 - distRatio * 0.28);
-    const marginBonus = Math.min(0.08, margin * 0.15);
+    const baseConf = Math.max(0.75, 1.0 - distRatio * 0.25);
+    const marginBonus = Math.min(0.08, margin * 0.12);
     const confidence = parseFloat(Math.min(0.98, baseConf + marginBonus).toFixed(2));
 
     return {
@@ -438,40 +636,107 @@ export function matchDynamicSequence(candidateSeq, dynamicSamples) {
 }
 
 /**
- * Stateful sliding-window recognizer for live camera feeds (Studio & Meeting Rooms)
+ * Stateful multi-scale sliding-window recognizer for live camera feeds (Studio & Meeting Rooms)
+ * - Resilient to 1-2 frame corner turns in multi-stroke signs ('Z', 'J').
+ * - Evaluates even if user lowers hand out of frame immediately upon completing a dynamic sign.
  */
 export class LiveDynamicMotionRecognizer {
   constructor() {
     this.buffer = [];
-    this.maxBufferSize = 42;
+    this.maxBufferSize = 48;
     this.inMotionArc = false;
-    this.arcFrameCount = 0;
+    this.arcFrames = [];
+    this.lowSpeedCount = 0;
+    this.emptyFrames = 0;
     this.framesSinceLastEval = 0;
     this.lastSeenAt = 0;
 
-    // 8-frame output latch so useAslAggregator & Socket.io confirm dynamic signs cleanly
+    // Output latch + post-match static suppression window
     this.latchRemaining = 0;
     this.latchedOutput = null;
     this.cooldownUntil = 0;
+    this.postSettleGuardUntil = 0;
     this.latestTopDynamic = [];
   }
 
   reset() {
     this.buffer = [];
     this.inMotionArc = false;
-    this.arcFrameCount = 0;
+    this.arcFrames = [];
+    this.lowSpeedCount = 0;
+    this.emptyFrames = 0;
     this.framesSinceLastEval = 0;
     this.latchRemaining = 0;
     this.latchedOutput = null;
+    this.postSettleGuardUntil = 0;
   }
 
   /**
-   * Processes one live frame and returns a latched dynamic match if recognized
+   * Returns true briefly after a dynamic gesture finishes while the hand lingers still,
+   * preventing static k-NN from falsely emitting the ending finger pose (e.g. 'You' after 'Z').
+   */
+  isInPostMatchSettle() {
+    return Date.now() < this.postSettleGuardUntil;
+  }
+
+  _evaluateCandidateWindows(dynamicSamples, now) {
+    // Test exact motion arc PLUS multi-scale trailing windows (18, 30, 44 frames)
+    // so prior hand-raises or slight pauses at sharp 'Z' corners never corrupt matching
+    const candidateSlices = [];
+
+    if (this.arcFrames.length >= 8) {
+      candidateSlices.push(this.arcFrames);
+    }
+    for (const winLen of [16, 24, 34, 46]) {
+      if (this.buffer.length >= Math.min(10, winLen)) {
+        candidateSlices.push(this.buffer.slice(-winLen));
+      }
+    }
+
+    let bestMatched = null;
+    let bestOverall = null;
+
+    for (const slice of candidateSlices) {
+      const built = buildDynamicSequence(slice, DTW_KEYFRAMES);
+      if (!built || built.motionAmplitude < MIN_DYNAMIC_MOTION_AMPLITUDE) continue;
+
+      const evalRes = matchDynamicSequence(built.sequence, dynamicSamples);
+      if (!evalRes) continue;
+
+      if (!bestOverall || evalRes.distance < bestOverall.distance) {
+        bestOverall = evalRes;
+      }
+      if (evalRes.matched && (!bestMatched || evalRes.distance < bestMatched.distance)) {
+        bestMatched = evalRes;
+      }
+    }
+
+    if (bestOverall?.topCandidates) {
+      this.latestTopDynamic = bestOverall.topCandidates;
+    }
+
+    if (bestMatched) {
+      this.latchedOutput = bestMatched;
+      this.latchRemaining = 7; // Current frame + 7 more = 8 frames display & broadcast burst
+      this.cooldownUntil = now + 850;
+      this.postSettleGuardUntil = now + 700;
+      this.buffer = [];
+      this.arcFrames = [];
+      this.inMotionArc = false;
+      this.lowSpeedCount = 0;
+      return bestMatched;
+    }
+
+    return null;
+  }
+
+  /**
+   * Processes one live frame (or null when hand leaves camera view) and returns a dynamic match
    */
   step(smoothedHands, normalizePoseFn, dynamicSamples) {
     const now = Date.now();
 
-    // Emit latched dynamic detection burst first
+    // 1. Drain latched dynamic detection burst even if hand just lowered out of view
     if (this.latchRemaining > 0 && this.latchedOutput) {
       this.latchRemaining -= 1;
       return this.latchedOutput;
@@ -482,19 +747,39 @@ export class LiveDynamicMotionRecognizer {
       return null;
     }
 
+    // 2. Handle empty camera frame (e.g. user dropped hand immediately after finishing 'Z'!)
     if (!smoothedHands || smoothedHands.length === 0) {
-      if (now - this.lastSeenAt > 220) {
-        this.buffer = [];
+      this.emptyFrames += 1;
+
+      if (
+        this.inMotionArc &&
+        this.arcFrames.length >= 8 &&
+        this.emptyFrames === 2 &&
+        now >= this.cooldownUntil
+      ) {
+        const matchOnExit = this._evaluateCandidateWindows(dynamicSamples, now);
         this.inMotionArc = false;
-        this.arcFrameCount = 0;
+        this.arcFrames = [];
+        this.buffer = [];
+        if (matchOnExit) return matchOnExit;
+      }
+
+      if (this.emptyFrames >= 5 || now - this.lastSeenAt > 260) {
+        this.buffer = [];
+        this.arcFrames = [];
+        this.inMotionArc = false;
+        this.lowSpeedCount = 0;
+        this.postSettleGuardUntil = 0;
       }
       return null;
     }
 
-    if (now - this.lastSeenAt > 320) {
+    this.emptyFrames = 0;
+    if (now - this.lastSeenAt > 360) {
       this.buffer = [];
+      this.arcFrames = [];
       this.inMotionArc = false;
-      this.arcFrameCount = 0;
+      this.lowSpeedCount = 0;
     }
     this.lastSeenAt = now;
 
@@ -503,69 +788,79 @@ export class LiveDynamicMotionRecognizer {
 
     const prevFrame = this.buffer.length > 0 ? this.buffer[this.buffer.length - 1] : null;
     if (prevFrame && prevFrame.handCount !== frameItem.handCount) {
-      // Hand count switched (1H <-> 2H): start fresh trajectory segment
       this.buffer = [frameItem];
+      this.arcFrames = [];
       this.inMotionArc = false;
-      this.arcFrameCount = 0;
+      this.lowSpeedCount = 0;
       return null;
     }
 
     const stepSpeed = prevFrame ? computeFrameStepSpeed(prevFrame, frameItem) : 0;
+
+    // Clear post-dynamic static linger guard if user begins a new intentional movement
+    if (stepSpeed > 0.08 && now > this.cooldownUntil - 350) {
+      this.postSettleGuardUntil = 0;
+    }
+
     this.buffer.push(frameItem);
     if (this.buffer.length > this.maxBufferSize) {
       this.buffer.shift();
     }
 
+    // 3. Track active motion arc with 3-frame corner tolerance (so 'Z' corners don't split arc!)
     if (stepSpeed >= 0.052) {
-      this.inMotionArc = true;
-      this.arcFrameCount += 1;
+      if (!this.inMotionArc) {
+        this.inMotionArc = true;
+        // Include up to 2 pre-onset anchor frames
+        this.arcFrames = this.buffer.slice(-3);
+      } else {
+        this.arcFrames.push(frameItem);
+      }
+      this.lowSpeedCount = 0;
     } else if (this.inMotionArc) {
-      this.arcFrameCount += 1;
+      this.arcFrames.push(frameItem);
+      this.lowSpeedCount += 1;
+    }
+
+    if (this.arcFrames.length > this.maxBufferSize) {
+      this.arcFrames.shift();
     }
 
     this.framesSinceLastEval += 1;
 
-    if (now < this.cooldownUntil || this.buffer.length < 9) {
+    if (now < this.cooldownUntil || this.buffer.length < 8) {
       return null;
     }
 
-    const didJustSettle = this.inMotionArc && this.arcFrameCount >= 7 && stepSpeed < 0.042;
-    const isSustainedWaveCheck =
-      this.inMotionArc && this.arcFrameCount >= 18 && this.framesSinceLastEval >= 6;
+    // Evaluate swiftly on 2+ settle frames (~66ms after stroke ends), while keeping arc alive
+    // across 1-2 frame sharp corner turns ('Z', 'J') until 3+ frames of non-matching stop!
+    const didPauseAfterStroke =
+      this.inMotionArc &&
+      this.arcFrames.length >= 8 &&
+      (this.lowSpeedCount === 2 || this.lowSpeedCount === 3);
 
-    if (!didJustSettle && !isSustainedWaveCheck) {
+    // Also evaluate periodically during long sustained waves (>= 28 arc frames, ~0.95s+)
+    const isSustainedWaveCheck =
+      this.inMotionArc && this.arcFrames.length >= 28 && this.framesSinceLastEval >= 6;
+
+    if (!didPauseAfterStroke && !isSustainedWaveCheck) {
+      if (this.inMotionArc && this.lowSpeedCount >= 4) {
+        this.inMotionArc = false;
+        this.arcFrames = [];
+        this.lowSpeedCount = 0;
+      }
       return null;
     }
 
     this.framesSinceLastEval = 0;
-    const windowFrames = this.buffer.slice(-32);
-    const built = buildDynamicSequence(windowFrames, DTW_KEYFRAMES);
+    const matchRes = this._evaluateCandidateWindows(dynamicSamples, now);
 
-    if (didJustSettle) {
+    if (this.lowSpeedCount >= 3 && !matchRes) {
       this.inMotionArc = false;
-      this.arcFrameCount = 0;
+      this.arcFrames = [];
+      this.lowSpeedCount = 0;
     }
 
-    if (!built || built.motionAmplitude < MIN_DYNAMIC_MOTION_AMPLITUDE) {
-      return null;
-    }
-
-    const evalRes = matchDynamicSequence(built.sequence, dynamicSamples);
-    if (!evalRes) return null;
-
-    this.latestTopDynamic = evalRes.topCandidates || [];
-
-    if (evalRes.matched) {
-      this.latchedOutput = evalRes;
-      this.latchRemaining = 7; // Current frame + 7 more = 8 frames total burst
-      this.cooldownUntil = now + 880;
-      this.buffer = [];
-      this.inMotionArc = false;
-      this.arcFrameCount = 0;
-      return evalRes;
-    }
-
-    return null;
+    return matchRes;
   }
 }
-

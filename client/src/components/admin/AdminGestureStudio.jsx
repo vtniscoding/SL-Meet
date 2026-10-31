@@ -441,22 +441,27 @@ export default function AdminGestureStudio({ onBackToApp }) {
           updatedAt: Date.now(),
         };
 
-        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-          const classification = classifyGesture(
-            results.multiHandLandmarks[0],
-            results.multiHandedness ? results.multiHandedness[0] : null,
-            results.multiHandLandmarks,
-            results.multiHandedness
-          );
+        const hasHands = Boolean(
+          results.multiHandLandmarks && results.multiHandLandmarks.length > 0
+        );
+        const classification = classifyGesture(
+          hasHands ? results.multiHandLandmarks[0] : null,
+          hasHands && results.multiHandedness ? results.multiHandedness[0] : null,
+          results.multiHandLandmarks || [],
+          results.multiHandedness || []
+        );
 
+        if (hasHands || classification.gesture) {
           setLiveDetection(classification);
 
           if (classification.gesture && classification.gesture !== 'Signing...') {
-            pushGesture('Admin Studio', classification.gesture, classification.confidence);
+            pushGesture('Admin Studio', classification.gesture, classification.confidence, {
+              mode: classification.mode,
+            });
           }
 
           // Accumulate clean smoothed landmarks during active 'capturing' phase
-          if (recordingPhaseRef.current === 'capturing') {
+          if (hasHands && recordingPhaseRef.current === 'capturing') {
             const smoothedHands =
               classification.smoothedLandmarks || results.multiHandLandmarks;
 

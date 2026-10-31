@@ -4,7 +4,8 @@ import AslStrip from './AslStrip';
 import CaptionSettingsPopover from './CaptionSettingsPopover';
 import { useCaptionFeed } from '../../../hooks/useCaptionFeed';
 import {
-  GlobeIcon,
+  HandsIcon,
+  AudioLinesIcon,
   TtFontSizeIcon,
   ChevronDownIcon,
   CheckmarkIcon,
@@ -15,11 +16,15 @@ import { ROLES } from '../../../constants/roles';
  * CaptionDock Component:
  * Clean, seamless subtitle stage matching Google Meet (Image 3).
  * - Displays purely: Avatar, User Name, and Content Text without unnecessary tags.
+ * - Completely separates STT (Speech to Text) and SLT (Sign Language Translation).
+ *   - STT mode: Shows ONLY speech captions from any participant speaking via mic.
+ *   - SLT mode: Shows ONLY sign language translations from any participant signing via AI Vision.
  * - Stable dock height to prevent video jumping.
- * - Subtle hover actions for History and Settings.
  */
 function CaptionDockComponent({
   role = 'non_signer',
+  captionMode = null, // 'STT' | 'SLT'
+  isCaptionsEnabled = false,
   prefs = {},
   onPrefsChange,
   onResetPrefs,
@@ -34,7 +39,10 @@ function CaptionDockComponent({
   transcriptLogs = [],
   speechLogs = [],
   speakingNames = [],
-  signerName = 'Signer',
+  signerName = '',
+  signerId = null,
+  signerAvatarColor = null,
+  signerAvatarUrl = null,
   onSwitchMode,
 }) {
   const dockRef = useRef(null);
@@ -44,8 +52,8 @@ function CaptionDockComponent({
   const [isModeDropdownOpen, setIsModeDropdownOpen] = useState(false);
   const modeDropdownRef = useRef(null);
 
-  const isSigner = role === ROLES.SIGNER;
-  const currentMode = isSigner ? 'STT' : 'SLT';
+  // Determine current active mode: prefer explicit captionMode, fallback to role mapping
+  const currentMode = captionMode || (role === ROLES.SIGNER ? 'STT' : 'SLT');
   const fullModeLabel =
     currentMode === 'SLT'
       ? 'SLT (Sign Language Translate)'
@@ -66,16 +74,14 @@ function CaptionDockComponent({
     };
   }, [isModeDropdownOpen]);
 
-  // Role display policy:
-  // SIGNER: toggled via Captions button (isSttEnabled)
-  // NON_SIGNER: toggled via SL Subtitles button (isAiEnabled)
-  const shouldRender = isSigner ? isSttEnabled : isAiEnabled;
+  // Master caption display visibility
+  const shouldRender = isCaptionsEnabled || (role === ROLES.SIGNER ? isSttEnabled : isAiEnabled);
 
   // Track hover or keyboard focus to freeze caption expiration
   const isFrozen = isHovered || isFocused;
 
-  // Ingest rolling speech captions feed (active for Signer)
-  const speechEntries = useCaptionFeed(isSigner && isSttEnabled ? speechCaptions : {}, {
+  // Ingest rolling speech captions feed (active when in STT mode)
+  const speechEntries = useCaptionFeed(shouldRender && currentMode === 'STT' ? speechCaptions : {}, {
     frozen: isFrozen,
   });
 
@@ -87,7 +93,7 @@ function CaptionDockComponent({
     return null;
   }, [transcriptLogs]);
 
-  // Set stable dock height when captions are active to completely prevent UI jumping
+  // Set stable dock height when captions are active to prevent video jumping
   useEffect(() => {
     if (!shouldRender) {
       document.documentElement.style.setProperty('--dock-h', '0px');
@@ -128,7 +134,11 @@ function CaptionDockComponent({
             className="h-7 px-3 rounded-full bg-transparent hover:bg-white/10 active:bg-white/15 text-slate-200 hover:text-white text-xs font-medium flex items-center space-x-2 transition-all cursor-pointer outline-none border border-white/20 hover:border-white/30 shadow-xs"
             title="Switch subtitle mode"
           >
-            <GlobeIcon className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+            {currentMode === 'SLT' ? (
+              <HandsIcon className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+            ) : (
+              <AudioLinesIcon className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+            )}
             <span className="tracking-tight">{fullModeLabel}</span>
             <ChevronDownIcon
               className={`w-3 h-3 text-slate-400 transition-transform duration-150 ${
@@ -143,7 +153,7 @@ function CaptionDockComponent({
                 type="button"
                 onClick={() => {
                   if (currentMode !== 'SLT' && onSwitchMode) {
-                    onSwitchMode(ROLES.NON_SIGNER);
+                    onSwitchMode('SLT');
                   }
                   setIsModeDropdownOpen(false);
                 }}
@@ -153,7 +163,10 @@ function CaptionDockComponent({
                     : 'text-slate-300 hover:bg-white/5 hover:text-white'
                 }`}
               >
-                <span>SLT (Sign Language Translate)</span>
+                <div className="flex items-center space-x-2">
+                  <HandsIcon className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+                  <span>SLT (Sign Language Translate)</span>
+                </div>
                 {currentMode === 'SLT' && <CheckmarkIcon className="w-3.5 h-3.5 text-[#8AB4F8]" />}
               </button>
 
@@ -161,7 +174,7 @@ function CaptionDockComponent({
                 type="button"
                 onClick={() => {
                   if (currentMode !== 'STT' && onSwitchMode) {
-                    onSwitchMode(ROLES.SIGNER);
+                    onSwitchMode('STT');
                   }
                   setIsModeDropdownOpen(false);
                 }}
@@ -171,7 +184,10 @@ function CaptionDockComponent({
                     : 'text-slate-300 hover:bg-white/5 hover:text-white'
                 }`}
               >
-                <span>STT (Speech To Text)</span>
+                <div className="flex items-center space-x-2">
+                  <AudioLinesIcon className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+                  <span>STT (Speech To Text)</span>
+                </div>
                 {currentMode === 'STT' && <CheckmarkIcon className="w-3.5 h-3.5 text-[#8AB4F8]" />}
               </button>
             </div>
@@ -182,41 +198,30 @@ function CaptionDockComponent({
         <div className="flex items-center space-x-1">
           <button
             onClick={() => setIsSettingsOpen((prev) => !prev)}
-            className="w-7 h-7 rounded-md flex items-center justify-center text-slate-300 hover:text-white hover:bg-white/15 active:bg-white/20 transition-all cursor-pointer outline-none"
+            className="w-8 h-8 rounded-md flex items-center justify-center text-slate-300 hover:text-white hover:bg-white/15 active:bg-white/20 transition-all cursor-pointer outline-none"
             title="Caption font size"
             aria-label="Caption font size"
           >
-            <TtFontSizeIcon className="w-4 h-4 text-slate-200 hover:text-white" />
+            <TtFontSizeIcon className="w-5 h-5 text-slate-200 hover:text-white shrink-0" size={20} />
           </button>
         </div>
       </div>
 
-      {/* Main Subtitle Content Stage: Pure Avatar + Name + Text (Image 3) */}
-      {isSigner ? (
-        <div className="flex flex-col space-y-1 w-full">
-          {isSttEnabled && (
-            <SpeechLane
-              entries={speechEntries}
-              prefs={prefs}
-              speakingNames={speakingNames}
-              sttStatus={sttStatus}
-              sttProgress={sttProgress}
-            />
-          )}
-
-          {/* Self-preview for Signer when hand tracking is active */}
-          {isHandTrackingEnabled && (
-            <AslStrip
-              currentSentence={currentSentence}
-              liveTokens={liveTokens}
-              isCompact={true}
-              prefs={prefs}
-              signerName={signerName}
-            />
-          )}
-        </div>
-      ) : (
-        isAiEnabled && (
+      {/* Main Subtitle Content Stage:
+          Completely decoupled:
+          - STT: ONLY SpeechLane (voice transcript from any mic)
+          - SLT: ONLY AslStrip (ASL translation from any signer)
+      */}
+      <div className="w-full">
+        {currentMode === 'STT' ? (
+          <SpeechLane
+            entries={speechEntries}
+            prefs={prefs}
+            speakingNames={speakingNames}
+            sttStatus={sttStatus}
+            sttProgress={sttProgress}
+          />
+        ) : (
           <AslStrip
             currentSentence={currentSentence}
             liveTokens={liveTokens}
@@ -224,9 +229,13 @@ function CaptionDockComponent({
             isCompact={false}
             prefs={prefs}
             signerName={signerName}
+            signerId={signerId}
+            signerAvatarColor={signerAvatarColor}
+            signerAvatarUrl={signerAvatarUrl}
+            isFrozen={isFrozen}
           />
-        )
-      )}
+        )}
+      </div>
 
       {/* Settings Popover */}
       <CaptionSettingsPopover

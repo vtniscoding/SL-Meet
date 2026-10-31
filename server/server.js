@@ -246,6 +246,8 @@ io.on('connection', (socket) => {
       userId: id,
       userMeta: meta || { name: `Participant ${id.slice(0, 4)}`, role: 'non_signer' },
       role: meta?.role || 'non_signer',
+      avatarColor: meta?.avatarColor || null,
+      avatarUrl: meta?.avatarUrl || null,
       isPresenting: meta?.isPresenting || false,
       screenStreamId: meta?.screenStreamId || null,
       isMuted: meta?.isMuted || false,
@@ -256,6 +258,8 @@ io.on('connection', (socket) => {
 
     const clientMeta = userMeta || { name: `Participant ${socket.id.slice(0, 4)}` };
     clientMeta.role = sanitizeRole(userMeta?.role);
+    clientMeta.avatarColor = userMeta?.avatarColor || null;
+    clientMeta.avatarUrl = userMeta?.avatarUrl || null;
     clientMeta.isPresenting = false;
     clientMeta.screenStreamId = null;
     clientMeta.isMuted = userMeta?.isMuted || false;
@@ -325,46 +329,52 @@ io.on('connection', (socket) => {
     console.log(`[Leave Room] Client ${socket.id} left room ${roomId}`);
   });
 
-  // Real-Time Sign Language Gesture Stream (Restricted strictly to Signer role)
+  socket.on('end_room', ({ roomId }) => {
+    if (rooms.has(roomId)) {
+      console.log(`[End Room] Client ${socket.id} ended room ${roomId} for everyone`);
+      io.to(roomId).emit('kick_peer_request', { senderId: socket.id, reason: 'Meeting ended' });
+      rooms.delete(roomId);
+    }
+  });
+
+  // Real-Time Sign Language Gesture Stream
   socket.on('send_gesture', ({ roomId, gesture, confidence, timestamp }) => {
     if (roomId && rooms.has(roomId)) {
       const roomData = rooms.get(roomId);
       const meta = roomData.members?.get(socket.id);
-      if (meta && meta.role === 'signer') {
-        socket.to(roomId).emit('gesture_stream', {
-          senderId: socket.id,
-          gesture,
-          confidence,
-          timestamp: timestamp || Date.now(),
-        });
-      } else {
-        console.warn(`[Unauthorized Gesture] Client ${socket.id} with role ${meta?.role} attempted to send gesture.`);
-      }
+      socket.to(roomId).emit('gesture_stream', {
+        senderId: socket.id,
+        senderName: meta?.name || `Participant ${socket.id.slice(0, 4)}`,
+        avatarColor: meta?.avatarColor || null,
+        avatarUrl: meta?.avatarUrl || null,
+        gesture,
+        confidence,
+        timestamp: timestamp || Date.now(),
+      });
     }
   });
 
-  // Real-Time Speech-to-Text Caption Stream (Restricted to Non-signer, Targeted to Signers only)
-  socket.on('speech_caption', ({ roomId, text, isFinal }) => {
+  // Real-Time Speech-to-Text Caption Stream (Broadcast to all room participants so any user with STT enabled sees captions)
+  socket.on('speech_caption', ({ roomId, text, isFinal, senderId, senderName, avatarColor, avatarUrl }) => {
     if (roomId && rooms.has(roomId) && typeof text === 'string' && text.trim().length > 0) {
       const roomData = rooms.get(roomId);
-      const senderMeta = roomData.members?.get(socket.id);
-      if (senderMeta && senderMeta.role === 'non_signer') {
-        const cleanText = text.trim().slice(0, 500);
-        const senderName = senderMeta.name || `Speaker ${socket.id.slice(0, 4)}`;
+      const effectiveSenderId = senderId || socket.id;
+      const senderMeta = roomData.members?.get(effectiveSenderId) || roomData.members?.get(socket.id);
+      const cleanText = text.trim().slice(0, 500);
+      const finalSenderName = senderName || senderMeta?.name || `Speaker ${effectiveSenderId.slice(0, 4)}`;
+      const finalAvatarColor = avatarColor || senderMeta?.avatarColor || null;
+      const finalAvatarUrl = avatarUrl || senderMeta?.avatarUrl || null;
 
-        // Targeted emission: Only participants with role === 'signer' receive speech captions!
-        for (const [memberId, memberMeta] of roomData.members) {
-          if (memberId !== socket.id && memberMeta?.role === 'signer') {
-            io.to(memberId).emit('speech_caption_stream', {
-              senderId: socket.id,
-              senderName,
-              text: cleanText,
-              isFinal: !!isFinal,
-              timestamp: Date.now(),
-            });
-          }
-        }
-      }
+      // Broadcast to all room members so anyone with STT mode enabled receives captions
+      io.in(roomId).emit('speech_caption_stream', {
+        senderId: effectiveSenderId,
+        senderName: finalSenderName,
+        avatarColor: finalAvatarColor,
+        avatarUrl: finalAvatarUrl,
+        text: cleanText,
+        isFinal: !!isFinal,
+        timestamp: Date.now(),
+      });
     }
   });
 

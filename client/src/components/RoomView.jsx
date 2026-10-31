@@ -13,6 +13,7 @@ import MeetingChatDrawer from './room/MeetingChatDrawer';
 import MeetingParticipantsDrawer from './room/MeetingParticipantsDrawer';
 import CaptionDock from './room/captions/CaptionDock';
 import RolePromptModal from './room/RolePromptModal';
+import MeetingConfirmModal from './room/MeetingConfirmModal';
 import MeetingPipView from './room/MeetingPipView';
 import HandMotionWindow from './room/HandMotionWindow';
 import WindowControls from './common/WindowControls';
@@ -23,6 +24,7 @@ import {
   CheckmarkIcon,
 } from '../icons';
 import { ROLES } from '../constants/roles';
+import { getRandomSpeakerColor, colorForSender } from './room/captions/captionUtils';
 
 /**
  * Top-Level Room Layout Container Component
@@ -33,14 +35,23 @@ export default function RoomView({
   mediaState,
   userName = 'You',
   currentUser = null,
+  profile = null,
   initialRole = ROLES.NON_SIGNER,
 }) {
   // Participant Communication Role State ('signer' | 'non_signer')
   const [userRole, setUserRole] = useState(() => initialRole || ROLES.NON_SIGNER);
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
+
+  // Independent Caption State & Mode (STT / SLT)
+  const [isCaptionsEnabled, setIsCaptionsEnabled] = useState(false);
+  const [captionMode, setCaptionMode] = useState(() => (initialRole === ROLES.SIGNER ? 'STT' : 'SLT'));
   const [isSttEnabled, setIsSttEnabled] = useState(false);
   const [speechLogs, setSpeechLogs] = useState([]);
   const [localSpeechCaptions, setLocalSpeechCaptions] = useState({});
+
+  // Stable random avatar color & user avatar URL for local participant
+  const localAvatarColor = useMemo(() => getRandomSpeakerColor(), []);
+  const localAvatarUrl = profile?.avatar_url || currentUser?.user_metadata?.avatar_url || null;
 
   // Caption preferences hook (persists font size, colors, opacity, token strip)
   const { prefs: captionPrefs, updatePref: updateCaptionPref, resetPrefs: resetCaptionPrefs } = useCaptionPrefs();
@@ -87,6 +98,7 @@ export default function RoomView({
     toggleConnection,
     joinRoom,
     leaveRoom,
+    endRoom,
     sendGesture,
     sendPresentingStatus,
     sendMediaStatusChange,
@@ -100,10 +112,47 @@ export default function RoomView({
   // WebRTC Real-Time P2P Video/Audio Streaming Hook
   const { peerStreams, peerScreenStreams } = useWebRTC(roomId, localStream, screenStream, presentingUsers);
 
-  // Signer's Speech-to-Text Pipeline: captures incoming audio from remote speakers
-  // Or fallbacks to local microphone if alone in room (single user testing)
+  // Track the most recently speaking participant for accurate transcript speaker attribution
+  const lastActiveSpeakerRef = useRef({
+    userId: 'local',
+    name: userName || 'You',
+    avatarColor: localAvatarColor,
+    avatarUrl: localAvatarUrl,
+    timestamp: Date.now(),
+  });
+
+  useEffect(() => {
+    if (isSpeaking && !isMuted) {
+      lastActiveSpeakerRef.current = {
+        userId: 'local',
+        name: userName || 'You',
+        avatarColor: localAvatarColor,
+        avatarUrl: localAvatarUrl,
+        timestamp: Date.now(),
+      };
+      return;
+    }
+    const speakingPeerId = Object.keys(peerMediaStatus).find(
+      (id) => peerMediaStatus[id]?.isSpeaking && !peerMediaStatus[id]?.isMuted
+    );
+    if (speakingPeerId && speakingPeerId !== socketId) {
+      const peer = roomUsers.find((u) => u.userId === speakingPeerId);
+      if (peer) {
+        lastActiveSpeakerRef.current = {
+          userId: peer.userId,
+          name: peer.userMeta?.name || `Participant ${peer.userId.slice(0, 4)}`,
+          avatarColor: peer.avatarColor || peer.userMeta?.avatarColor || colorForSender(peer.userId),
+          avatarUrl: peer.avatarUrl || peer.userMeta?.avatarUrl || null,
+          timestamp: Date.now(),
+        };
+      }
+    }
+  }, [isSpeaking, isMuted, peerMediaStatus, roomUsers, userName, localAvatarColor, localAvatarUrl, socketId]);
+
+  // Speech-to-Text Pipeline: captures incoming audio from remote speakers or local microphone
+  const shouldListenSpeech = (isCaptionsEnabled && captionMode === 'STT') || (!isMuted && localStream);
   const sttTracks = useMemo(() => {
-    if (userRole !== ROLES.SIGNER || !isSttEnabled) return [];
+    if (!shouldListenSpeech) return [];
     const audioTracks = [];
     Object.entries(peerStreams).forEach(([peerId, stream]) => {
       if (stream) {
@@ -114,16 +163,15 @@ export default function RoomView({
         });
       }
     });
-    if (audioTracks.length > 0) {
-      return audioTracks;
+    if (localStream && !isMuted) {
+      localStream.getAudioTracks().forEach((track) => {
+        if (track.readyState === 'live') {
+          audioTracks.push(track);
+        }
+      });
     }
-    // Fallback to local mic only if completely alone in room (single user testing)
-    const hasRemotePeers = Object.keys(peerStreams).length > 0;
-    if (!hasRemotePeers && localStream && !isMuted) {
-      return localStream.getAudioTracks().filter((t) => t.readyState === 'live');
-    }
-    return [];
-  }, [peerStreams, userRole, isSttEnabled, localStream, isMuted]);
+    return audioTracks;
+  }, [peerStreams, shouldListenSpeech, localStream, isMuted]);
 
   const sttTracksKey = sttTracks.map((t) => t.id).sort().join('|');
   const sttAudioStream = useMemo(
@@ -132,7 +180,7 @@ export default function RoomView({
     [sttTracksKey]
   );
 
-  const isSttActive = userRole === ROLES.SIGNER && isSttEnabled && !!sttAudioStream;
+  const isSttActive = shouldListenSpeech && !!sttAudioStream;
   const {
     status: sttStatus,
     loadProgress: sttProgress,
@@ -143,16 +191,35 @@ export default function RoomView({
     onCaption: useCallback(
       ({ text, isFinal }) => {
         if (!text) return;
-        // Check if transcribing remote peer or local user testing alone
         const hasRemotePeers = Object.values(peerStreams).some((s) => s && s.getAudioTracks().length > 0);
+        const now = Date.now();
+        let speaker = null;
 
-        const activeSpeakerPeer =
-          roomUsers.find((u) => u.userId !== socketId && peerMediaStatus[u.userId]?.isSpeaking) ||
-          roomUsers.find((u) => u.userId !== socketId && u.role === ROLES.NON_SIGNER) ||
-          roomUsers.find((u) => u.userId !== socketId);
+        const activePeer = roomUsers.find((u) => u.userId !== socketId && peerMediaStatus[u.userId]?.isSpeaking);
+        if (activePeer) {
+          speaker = {
+            userId: activePeer.userId,
+            name: activePeer.userMeta?.name || `Participant ${activePeer.userId.slice(0, 4)}`,
+            avatarColor: activePeer.avatarColor || activePeer.userMeta?.avatarColor || colorForSender(activePeer.userId),
+            avatarUrl: activePeer.avatarUrl || activePeer.userMeta?.avatarUrl || null,
+          };
+        } else if (hasRemotePeers && now - lastActiveSpeakerRef.current.timestamp < 4500 && lastActiveSpeakerRef.current.userId !== 'local') {
+          speaker = lastActiveSpeakerRef.current;
+        } else if (!hasRemotePeers || (isSpeaking && !isMuted)) {
+          speaker = {
+            userId: 'local',
+            name: userName || 'You',
+            avatarColor: localAvatarColor,
+            avatarUrl: localAvatarUrl,
+          };
+        } else {
+          speaker = lastActiveSpeakerRef.current;
+        }
 
-        const speakerId = hasRemotePeers && activeSpeakerPeer ? activeSpeakerPeer.userId : 'local';
-        const speakerName = hasRemotePeers && activeSpeakerPeer ? (activeSpeakerPeer.userMeta?.name || 'Speaker') : (userName || 'You');
+        const speakerId = speaker.userId;
+        const speakerName = speaker.name;
+        const speakerAvatarColor = speaker.avatarColor;
+        const speakerAvatarUrl = speaker.avatarUrl;
 
         setLocalSpeechCaptions((prev) => ({
           ...prev,
@@ -161,9 +228,20 @@ export default function RoomView({
             text,
             isFinal,
             senderName: speakerName,
+            avatarColor: speakerAvatarColor,
+            avatarUrl: speakerAvatarUrl,
             timestamp: Date.now(),
           },
         }));
+
+        if (sendSpeechCaption && (!hasRemotePeers || speakerId === 'local')) {
+          sendSpeechCaption(text, isFinal, {
+            senderId: socketId,
+            senderName: userName || 'Speaker',
+            avatarColor: localAvatarColor,
+            avatarUrl: localAvatarUrl,
+          });
+        }
 
         if (isFinal) {
           const timestamp = Date.now();
@@ -178,13 +256,15 @@ export default function RoomView({
                 second: '2-digit',
               }),
               sender: speakerName,
+              avatarColor: speakerAvatarColor,
+              avatarUrl: speakerAvatarUrl,
               type: 'SPEECH',
               text,
             },
           ]);
         }
       },
-      [roomUsers, socketId, peerMediaStatus, peerStreams, userName]
+      [roomUsers, socketId, peerMediaStatus, peerStreams, userName, localAvatarColor, localAvatarUrl, isSpeaking, isMuted, sendSpeechCaption]
     ),
   });
 
@@ -196,10 +276,10 @@ export default function RoomView({
     };
   }, [speechCaptions, localSpeechCaptions]);
 
-  // Track finalized remote speech captions from socket for Signer role
+  // Track finalized remote speech captions from socket
   const loggedSpeechCaptionsRef = useRef(new Set());
   useEffect(() => {
-    if (speechCaptions && userRole === ROLES.SIGNER) {
+    if (speechCaptions && isCaptionsEnabled && captionMode === 'STT') {
       Object.entries(speechCaptions).forEach(([senderId, cap]) => {
         if (cap && cap.isFinal && cap.text) {
           const capKey = `${senderId}-${cap.timestamp}-${cap.text}`;
@@ -217,6 +297,8 @@ export default function RoomView({
                   second: '2-digit',
                 }),
                 sender: cap.senderName || `Speaker ${senderId.slice(0, 4)}`,
+                avatarColor: cap.avatarColor || colorForSender(senderId),
+                avatarUrl: cap.avatarUrl || null,
                 type: 'SPEECH',
                 text: cap.text,
               },
@@ -225,7 +307,7 @@ export default function RoomView({
         }
       });
     }
-  }, [speechCaptions, userRole]);
+  }, [speechCaptions, isCaptionsEnabled, captionMode]);
 
   // Meeting Room Layout Modes: 'tiled' (Auto Grid) | 'sidebar' (Thanh bên) | 'spotlight' (Tiêu điểm)
   const [isPipMode, setIsPipMode] = useState(false);
@@ -234,6 +316,14 @@ export default function RoomView({
   const [isAiEnabled, setIsAiEnabled] = useState(false);
   const [isHandTrackingEnabled, setIsHandTrackingEnabled] = useState(false);
   const [activeSignerId, setActiveSignerId] = useState(null);
+
+  // User action confirmation modal state (End call, AI vision)
+  const [confirmModalConfig, setConfirmModalConfig] = useState({
+    isOpen: false,
+    title: '',
+    description: '',
+    actions: [],
+  });
 
   // Real-time meeting clock (Google Meet style: e.g. 2:56 PM)
   const [meetingTime, setMeetingTime] = useState(() =>
@@ -327,12 +417,6 @@ export default function RoomView({
       changeRole(newRole);
       if (newRole === ROLES.NON_SIGNER) {
         setIsHandTrackingEnabled(false);
-        setIsSttEnabled(false);
-        setIsAiEnabled(false);
-      } else if (newRole === ROLES.SIGNER) {
-        setIsSttEnabled(false);
-        setIsAiEnabled(false);
-        setIsHandTrackingEnabled(false);
       }
       setIsRoleModalOpen(false);
     },
@@ -340,22 +424,12 @@ export default function RoomView({
   );
 
   // Dedicated callback for switching subtitle mode (SLT / STT) from CaptionDock dropdown
+  // Completely decoupled from role and hand tracking
   const handleSwitchSubtitleMode = useCallback(
-    (newRole) => {
-      setUserRole(newRole);
-      changeRole(newRole);
-      if (newRole === ROLES.NON_SIGNER) {
-        setIsHandTrackingEnabled(false);
-        setIsSttEnabled(false);
-        setIsAiEnabled(true);
-      } else if (newRole === ROLES.SIGNER) {
-        setIsSttEnabled(true);
-        setIsAiEnabled(false);
-        setIsHandTrackingEnabled(false);
-      }
-      setIsRoleModalOpen(false);
+    (newMode) => {
+      setCaptionMode(newMode);
     },
-    [changeRole]
+    []
   );
 
   // Auto connect & join room socket channel
@@ -373,11 +447,13 @@ export default function RoomView({
       userId: currentUser?.id || null,
       isGuest: !currentUser,
       role: userRoleRef.current,
+      avatarColor: localAvatarColor,
+      avatarUrl: localAvatarUrl,
     });
     return () => {
       leaveRoom();
     };
-  }, [roomId, userName, currentUser]);
+  }, [roomId, userName, currentUser, localAvatarColor, localAvatarUrl]);
 
   // Broadcast local camera, mic, and AI Vision status changes to all room peers
   useEffect(() => {
@@ -412,8 +488,15 @@ export default function RoomView({
       const latest = remoteGestures[0];
       if (latest && latest.gesture) {
         const sender = roomUsers.find((u) => u.userId === latest.senderId);
-        const senderName = sender?.userMeta?.name || `Participant ${latest.senderId?.slice(0, 4)}`;
-        pushGesture(senderName, latest.gesture);
+        const senderName = latest.senderName || sender?.userMeta?.name || `Participant ${latest.senderId?.slice(0, 4)}`;
+        const senderAvatarColor = latest.avatarColor || sender?.avatarColor || sender?.userMeta?.avatarColor || colorForSender(latest.senderId);
+        const senderAvatarUrl = latest.avatarUrl || sender?.avatarUrl || sender?.userMeta?.avatarUrl || null;
+        pushGesture(senderName, latest.gesture, latest.confidence ?? 0.9, {
+          mode: latest.mode,
+          senderId: latest.senderId,
+          avatarColor: senderAvatarColor,
+          avatarUrl: senderAvatarUrl,
+        });
         if (latest.senderId) {
           setActiveSignerId(latest.senderId);
         }
@@ -485,6 +568,8 @@ export default function RoomView({
     id: 'local',
     name: localDisplayName,
     role: userRole,
+    avatarColor: localAvatarColor,
+    avatarUrl: localAvatarUrl,
     isLocal: true,
     isScreenSharing: false,
     isCameraOff,
@@ -500,6 +585,8 @@ export default function RoomView({
         id: 'local-screen',
         name: userName ? `${userName} (Presentation)` : 'You (Presentation)',
         role: userRole,
+        avatarColor: localAvatarColor,
+        avatarUrl: localAvatarUrl,
         isLocal: true,
         isScreenSharing: true,
         isCameraOff: false,
@@ -519,6 +606,8 @@ export default function RoomView({
       const peerScreenStream = peerScreenStreams[u.userId];
       const isPeerPresenting = presentingUsers[u.userId]?.isPresenting === true;
       const baseName = u.userMeta?.name || `Participant ${u.userId.slice(0, 4)}`;
+      const peerAvatarColor = u.avatarColor || u.userMeta?.avatarColor || colorForSender(u.userId);
+      const peerAvatarUrl = u.avatarUrl || u.userMeta?.avatarUrl || null;
 
       // Compute peer mic & camera status from real-time peerMediaStatus or stream track inspection
       const peerMedia = (peerMediaStatus && peerMediaStatus[u.userId]) || u.userMeta || {};
@@ -547,6 +636,8 @@ export default function RoomView({
         id: u.userId,
         name: baseName,
         role: peerRole,
+        avatarColor: peerAvatarColor,
+        avatarUrl: peerAvatarUrl,
         isLocal: false,
         isScreenSharing: false,
         isCameraOff: isPeerCameraOff,
@@ -564,6 +655,8 @@ export default function RoomView({
           id: `${u.userId}-screen`,
           name: `${baseName} (Presentation)`,
           role: peerRole,
+          avatarColor: peerAvatarColor,
+          avatarUrl: peerAvatarUrl,
           isLocal: false,
           isScreenSharing: true,
           isCameraOff: false,
@@ -608,6 +701,10 @@ export default function RoomView({
     setIsAiEnabled((prev) => !prev);
   };
 
+  const handleToggleCaptions = () => {
+    setIsCaptionsEnabled((prev) => !prev);
+  };
+
   const handleToggleHandTracking = () => {
     if (userRole !== ROLES.SIGNER) return;
     setIsHandTrackingEnabled((prev) => {
@@ -616,6 +713,65 @@ export default function RoomView({
         setActiveSignerId(null);
       }
       return next;
+    });
+  };
+
+  const handleRequestLeave = () => {
+    setConfirmModalConfig({
+      isOpen: true,
+      title: 'End the call or just leave?',
+      description: 'You can just leave the call if you don’t want to end it for everyone else',
+      actions: [
+        {
+          label: 'Just leave the call',
+          onClick: () => {
+            setConfirmModalConfig((prev) => ({ ...prev, isOpen: false }));
+            handleLeave();
+          },
+        },
+        {
+          label: 'End the call for everyone',
+          onClick: () => {
+            setConfirmModalConfig((prev) => ({ ...prev, isOpen: false }));
+            if (endRoom) {
+              endRoom();
+            }
+            handleLeave();
+          },
+        },
+      ],
+    });
+  };
+
+  const handleRequestHandTracking = () => {
+    if (userRole !== ROLES.SIGNER) return;
+    if (isHandTrackingEnabled) {
+      setIsHandTrackingEnabled(false);
+      if (activeSignerId === 'local') {
+        setActiveSignerId(null);
+      }
+      return;
+    }
+    setConfirmModalConfig({
+      isOpen: true,
+      title: 'Turn on AI Vision?',
+      description: 'Camera will track your hand gestures to interpret American Sign Language (ASL) in real time',
+      actions: [
+        {
+          label: 'Cancel',
+          variant: 'secondary',
+          onClick: () => {
+            setConfirmModalConfig((prev) => ({ ...prev, isOpen: false }));
+          },
+        },
+        {
+          label: 'Turn on',
+          onClick: () => {
+            setConfirmModalConfig((prev) => ({ ...prev, isOpen: false }));
+            setIsHandTrackingEnabled(true);
+          },
+        },
+      ],
     });
   };
 
@@ -638,13 +794,22 @@ export default function RoomView({
       if (userRole !== ROLES.SIGNER) return;
       if (data && data.gesture) {
         setActiveSignerId('local');
-        pushGesture(userName || 'You', data.gesture, data.confidence);
-        sendGesture({ gesture: data.gesture, confidence: data.confidence || 0.95 });
+        pushGesture(userName || 'You', data.gesture, data.confidence, {
+          mode: data.mode,
+          senderId: 'local',
+          avatarColor: localAvatarColor,
+          avatarUrl: localAvatarUrl,
+        });
+        sendGesture({
+          gesture: data.gesture,
+          confidence: data.confidence || 0.95,
+          mode: data.mode,
+        });
       } else {
         notifyHandReset?.();
       }
     },
-    [userRole, sendGesture, pushGesture, userName, notifyHandReset]
+    [userRole, sendGesture, pushGesture, userName, notifyHandReset, localAvatarColor, localAvatarUrl]
   );
 
   // Persistent Room-Level MediaPipe Hand Tracking Worker (Decoupled from UI video tiles)
@@ -674,7 +839,17 @@ export default function RoomView({
     return updatedParticipants.find((p) => p.id === effectiveSignerId);
   }, [updatedParticipants, effectiveSignerId]);
   const activeSignerName =
-    activeSignerParticipant?.name || (userRole === ROLES.SIGNER ? userName : 'Signer');
+    activeSignerParticipant?.name || (userRole === ROLES.SIGNER ? userName : '');
+  const activeSignerAvatarColor =
+    activeSignerParticipant?.avatarColor ||
+    (userRole === ROLES.SIGNER || effectiveSignerId === 'local'
+      ? localAvatarColor
+      : (effectiveSignerId ? colorForSender(effectiveSignerId) : localAvatarColor));
+  const activeSignerAvatarUrl =
+    activeSignerParticipant?.avatarUrl ||
+    (userRole === ROLES.SIGNER || effectiveSignerId === 'local'
+      ? localAvatarUrl
+      : null);
 
   // Active speaker names for live speaking telemetry indicators in caption dock
   const activeSpeakingNames = useMemo(() => {
@@ -727,6 +902,8 @@ export default function RoomView({
         <MeetingPipView
           mainParticipant={pipMainParticipant}
           localStream={localStream}
+          localAvatarColor={localAvatarColor}
+          localAvatarUrl={localAvatarUrl}
           userRole={userRole}
           isMuted={isMuted}
           isCameraOff={isCameraOff}
@@ -734,10 +911,15 @@ export default function RoomView({
           currentSentence={currentSentence}
           liveTokens={liveTokens}
           signerName={activeSignerName}
-          isAiEnabled={isAiEnabled}
-          isSttEnabled={isSttEnabled}
+          signerId={effectiveSignerId}
+          signerAvatarColor={activeSignerAvatarColor}
+          signerAvatarUrl={activeSignerAvatarUrl}
+          isCaptionsEnabled={isCaptionsEnabled}
+          captionMode={captionMode}
+          isAiEnabled={isCaptionsEnabled && captionMode === 'SLT'}
+          isSttEnabled={isCaptionsEnabled && captionMode === 'STT'}
           onExitPiP={handleExitPiP}
-          onLeaveRoom={handleLeave}
+          onLeaveRoom={handleRequestLeave}
           onToggleMic={toggleMic}
           onToggleCamera={toggleCamera}
         />
@@ -860,7 +1042,7 @@ export default function RoomView({
       </header>
 
       {/* Main Workspace: Meeting Layout Engine + Slide-over Chat & People Drawers */}
-      <main className="flex-1 w-full flex items-stretch justify-between gap-4 overflow-hidden px-4 md:px-6 my-1 relative min-h-0">
+      <main className="flex-1 w-full flex items-stretch justify-between gap-2 sm:gap-4 overflow-hidden px-2 sm:px-4 md:px-6 my-1 relative min-h-0">
         {/* Left Column: Video Stage + Subtitles CC Stage (Adapts width dynamically when drawers open - Image 2) */}
         <div className="flex-1 h-full min-w-0 flex flex-col justify-between overflow-hidden">
           <div className="flex-1 w-full min-h-0">
@@ -871,7 +1053,7 @@ export default function RoomView({
               layoutMode={layoutMode}
               pinnedId={pinnedId}
               onTogglePin={handleTogglePin}
-              isAiEnabled={isAiEnabled}
+              isAiEnabled={isCaptionsEnabled && captionMode === 'SLT'}
               isHandTrackingEnabled={isHandTrackingEnabled && userRole === ROLES.SIGNER}
               activeSignerId={effectiveSignerId}
               speechCaptions={combinedSpeechCaptions}
@@ -883,11 +1065,13 @@ export default function RoomView({
           {/* Dedicated Accessible Caption & Subtitle Dock (Stacked beneath video) */}
           <CaptionDock
             role={userRole}
+            captionMode={captionMode}
+            isCaptionsEnabled={isCaptionsEnabled}
             prefs={captionPrefs}
             onPrefsChange={updateCaptionPref}
             onResetPrefs={resetCaptionPrefs}
-            isSttEnabled={isSttEnabled}
-            isAiEnabled={isAiEnabled}
+            isSttEnabled={isCaptionsEnabled && captionMode === 'STT'}
+            isAiEnabled={isCaptionsEnabled && captionMode === 'SLT'}
             isHandTrackingEnabled={isHandTrackingEnabled && userRole === ROLES.SIGNER}
             sttStatus={sttStatus}
             sttProgress={sttProgress}
@@ -898,40 +1082,56 @@ export default function RoomView({
             speechLogs={speechLogs}
             speakingNames={activeSpeakingNames}
             signerName={activeSignerName}
+            signerId={effectiveSignerId}
+            signerAvatarColor={activeSignerAvatarColor}
+            signerAvatarUrl={activeSignerAvatarUrl}
             onSwitchMode={handleSwitchSubtitleMode}
           />
         </div>
 
-        {/* Real-Time In-Call Text Chat Drawer */}
-        <MeetingChatDrawer
-          isOpen={isChatOpen}
-          onClose={() => setIsChatOpen(false)}
-          messages={chatMessages}
-          onSendMessage={sendChatMessage}
-          currentSocketId={socketId}
-        />
-
-        {/* Real-Time Participants & Moderation Drawer */}
-        <MeetingParticipantsDrawer
-          isOpen={isPeopleOpen}
-          onClose={() => setIsPeopleOpen(false)}
-          participants={updatedParticipants}
-          pinnedId={pinnedId}
-          hostId={hostId}
-          onTogglePin={handleTogglePin}
-          onMutePeer={sendMutePeer}
-          onKickPeer={sendKickPeer}
-          currentSocketId={socketId}
-        />
+        {/* Unified Slide-in / Slide-out Side Panel Drawer */}
+        <aside
+          aria-hidden={!isChatOpen && !isPeopleOpen}
+          className={`h-full bg-[#202124] flex flex-col justify-between z-20 shadow-2xl rounded-xl overflow-hidden transition-all duration-300 ease-in-out shrink-0 select-none ${
+            isChatOpen || isPeopleOpen
+              ? 'w-72 sm:w-80 md:w-96 opacity-100 translate-x-0 border-l border-slate-700/60'
+              : 'w-0 opacity-0 translate-x-12 border-l-0 pointer-events-none'
+          }`}
+        >
+          <div className="w-72 sm:w-80 md:w-96 h-full flex flex-col justify-between shrink-0">
+            {isChatOpen && (
+              <MeetingChatDrawer
+                isOpen={isChatOpen}
+                onClose={() => setIsChatOpen(false)}
+                messages={chatMessages}
+                onSendMessage={sendChatMessage}
+                currentSocketId={socketId}
+              />
+            )}
+            {isPeopleOpen && (
+              <MeetingParticipantsDrawer
+                isOpen={isPeopleOpen}
+                onClose={() => setIsPeopleOpen(false)}
+                participants={updatedParticipants}
+                pinnedId={pinnedId}
+                hostId={hostId}
+                onTogglePin={handleTogglePin}
+                onMutePeer={sendMutePeer}
+                onKickPeer={sendKickPeer}
+                currentSocketId={socketId}
+              />
+            )}
+          </div>
+        </aside>
       </main>
 
       {/* Bottom Meeting Controls Bar */}
-      <div className="w-full px-4 md:px-6 pb-2.5 sm:pb-3 shrink-0 flex flex-col">
+      <div className="w-full px-2 sm:px-4 md:px-6 pb-2 sm:pb-3 shrink-0 flex flex-col">
         <MeetingControlBar
           isMuted={isMuted}
           isCameraOff={isCameraOff}
           isScreenSharing={isScreenSharing}
-          isAiEnabled={isAiEnabled}
+          isAiEnabled={isCaptionsEnabled && captionMode === 'SLT'}
           isHandTrackingEnabled={isHandTrackingEnabled && userRole === ROLES.SIGNER}
           isChatOpen={isChatOpen}
           isPeopleOpen={isPeopleOpen}
@@ -939,19 +1139,22 @@ export default function RoomView({
           participantCount={updatedParticipants.length}
           pinnedId={pinnedId}
           userRole={userRole}
-          isSttEnabled={isSttEnabled}
+          isCaptionsEnabled={isCaptionsEnabled}
+          captionMode={captionMode}
+          isSttEnabled={isCaptionsEnabled && captionMode === 'STT'}
           sttStatus={sttStatus}
           onToggleMic={toggleMic}
           onToggleCamera={toggleCamera}
           onToggleScreenShare={toggleScreenShare}
-          onToggleAi={handleToggleAi}
-          onToggleHandTracking={handleToggleHandTracking}
-          onToggleStt={() => setIsSttEnabled((prev) => !prev)}
+          onToggleAi={handleToggleCaptions}
+          onToggleHandTracking={handleRequestHandTracking}
+          onToggleStt={handleToggleCaptions}
+          onToggleCaptions={handleToggleCaptions}
           onRequestSwitchRole={() => setIsRoleModalOpen(true)}
           onToggleChat={handleToggleChat}
           onTogglePeople={handleTogglePeople}
           onResetPin={handleResetPin}
-          onLeaveRoom={handleLeave}
+          onLeaveRoom={handleRequestLeave}
         />
       </div>
 
@@ -973,6 +1176,15 @@ export default function RoomView({
         isCameraOff={isCameraOff}
         latestResultsRef={latestResultsRef}
         onClose={handleCloseHandMotion}
+      />
+
+      {/* User Action Confirmation Modal (Leave Call, AI Vision) */}
+      <MeetingConfirmModal
+        isOpen={confirmModalConfig.isOpen}
+        title={confirmModalConfig.title}
+        description={confirmModalConfig.description}
+        actions={confirmModalConfig.actions}
+        onClose={() => setConfirmModalConfig((prev) => ({ ...prev, isOpen: false }))}
       />
     </>
   );

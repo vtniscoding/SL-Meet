@@ -9,25 +9,25 @@ export const ROLES = Object.freeze({
 export const ROLE_META = Object.freeze({
   [ROLES.SIGNER]: {
     id: ROLES.SIGNER,
-    label: 'Signer',
+    label: 'Sign language user',
     shortLabel: 'Signer',
     badgeText: 'Signer',
     iconName: 'Hand',
-    description: 'I am Deaf or Hard of Hearing and will communicate using Sign Language.',
+    description: 'Use camera for sign detection and read live captions of speech.',
     canSign: true,
-    canSpeechToText: false,
+    canSpeechToText: true,
     receivesSpeechCaptions: true,
   },
   [ROLES.NON_SIGNER]: {
     id: ROLES.NON_SIGNER,
-    label: 'Non-signer',
-    shortLabel: 'Speaker',
+    label: 'Standard user',
+    shortLabel: 'Standard',
     badgeText: 'Speaker',
     iconName: 'Mic',
-    description: 'I am hearing and will speak verbally using microphone.',
+    description: 'Use microphone to speak, read sign translations and live speech captions.',
     canSign: false,
     canSpeechToText: true,
-    receivesSpeechCaptions: false,
+    receivesSpeechCaptions: true,
   },
 });
 

@@ -5,7 +5,7 @@ import {
   VolumeIcon as Volume2,
 } from '../../../icons';
 import { CAPTION_CONFIG } from '../../../config/captionConfig';
-import { colorForSender } from './captionUtils';
+import ParticipantAvatar from '../../common/ParticipantAvatar';
 
 /**
  * SpeechLane Component:
@@ -13,6 +13,7 @@ import { colorForSender } from './captionUtils';
  * - Shows only circular avatar, user name, and content text.
  * - Groups consecutive sentences from the same speaker into a single flowing block.
  * - Caps at fixed max-height and adds automatic scrollbar on overflow without pushing UI up.
+ * - Uses ParticipantAvatar to support uploaded avatars and consistent stable colors.
  */
 export default function SpeechLane({
   entries = [],
@@ -25,13 +26,7 @@ export default function SpeechLane({
   const showNames = prefs.showNames !== false;
   const scrollRef = useRef(null);
 
-  const getInitial = (name) => {
-    if (!name) return 'U';
-    const clean = name.replace(/\s*\(You\)/i, '').replace(/\s*\(Presentation\)/i, '').trim();
-    return clean ? clean.charAt(0).toUpperCase() : 'U';
-  };
-
-  // Group consecutive utterances by the same speaker so avatar and name are not duplicated (Image 3)
+  // Group consecutive utterances by the same speaker so avatar and name are not duplicated
   const speakerGroups = useMemo(() => {
     const groups = [];
     entries.forEach((entry) => {
@@ -40,11 +35,15 @@ export default function SpeechLane({
         lastGroup.texts.push(entry.text);
         lastGroup.isFinal = entry.isFinal;
         lastGroup.latestTimestamp = entry.timestamp;
+        if (entry.avatarColor) lastGroup.avatarColor = entry.avatarColor;
+        if (entry.avatarUrl) lastGroup.avatarUrl = entry.avatarUrl;
       } else {
         groups.push({
           id: entry.id,
           senderId: entry.senderId,
           senderName: entry.senderName,
+          avatarColor: entry.avatarColor,
+          avatarUrl: entry.avatarUrl,
           texts: [entry.text],
           isFinal: entry.isFinal,
           latestTimestamp: entry.timestamp,
@@ -110,8 +109,6 @@ export default function SpeechLane({
   return (
     <div className="w-full flex flex-col justify-end space-y-2 select-text">
       {speakerGroups.map((group) => {
-        const senderColor = colorForSender(group.senderId);
-        const initial = getInitial(group.senderName);
         const combinedText = group.texts.join(' ');
 
         return (
@@ -120,11 +117,14 @@ export default function SpeechLane({
             className="flex items-start space-x-3 transition-opacity duration-150 py-0.5"
           >
             {/* Circular Avatar */}
-            <div
-              className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 mt-0.5 shadow-xs select-none"
-              style={{ backgroundColor: senderColor }}
-            >
-              {initial}
+            <div className="mt-0.5 shrink-0 select-none">
+              <ParticipantAvatar
+                name={group.senderName}
+                id={group.senderId}
+                avatarColor={group.avatarColor}
+                avatarUrl={group.avatarUrl}
+                className="w-7 h-7 text-xs"
+              />
             </div>
 
             {/* Name + Text Container */}

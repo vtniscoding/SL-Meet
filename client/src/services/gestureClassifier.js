@@ -436,8 +436,39 @@ export function checkDatasetConflict(candidateVector, targetLabel = '', mode = '
  * @returns {Object} Result { gesture, confidence, distance, closestGesture, mode, topCandidates }
  */
 export function classifyLandmarksWithDataset(multiHandLandmarks) {
+  const dynamicSamples = [];
+  const staticSamples = [];
+  for (const s of activeDataset) {
+    if (!s || !Array.isArray(s.vector)) continue;
+    if (isDynamicSample(s)) {
+      dynamicSamples.push(s);
+    } else if (typeof s.vector[0] === 'number') {
+      staticSamples.push(s);
+    }
+  }
+
   if (!multiHandLandmarks || multiHandLandmarks.length === 0) {
-    liveDtwRecognizer.step(null, normalizeMultiHandLandmarks, []);
+    smoothMultiHandLandmarks([]);
+    const exitDynamicMatch = liveDtwRecognizer.step(
+      null,
+      normalizeMultiHandLandmarks,
+      dynamicSamples
+    );
+    if (exitDynamicMatch && exitDynamicMatch.matched) {
+      return {
+        gesture: exitDynamicMatch.gesture,
+        confidence: exitDynamicMatch.confidence,
+        distance: exitDynamicMatch.distance,
+        closestGesture: exitDynamicMatch.closestGesture,
+        margin: exitDynamicMatch.margin,
+        mode: 'dynamic',
+        topCandidates: exitDynamicMatch.topCandidates || [],
+        smoothedLandmarks: [],
+        isFastTransition: false,
+        maxVelocity: 0,
+      };
+    }
+
     return {
       gesture: '',
       confidence: 0,
@@ -450,17 +481,6 @@ export function classifyLandmarksWithDataset(multiHandLandmarks) {
   // 1. Adaptive Landmark Smoothing (Nearest-Wrist Anti-Swap) & Velocity Tracking
   const { smoothedMultiHandLandmarks, isHandMoving, isFastTransition, maxVelocity } =
     smoothMultiHandLandmarks(multiHandLandmarks);
-
-  const dynamicSamples = [];
-  const staticSamples = [];
-  for (const s of activeDataset) {
-    if (!s || !Array.isArray(s.vector)) continue;
-    if (isDynamicSample(s)) {
-      dynamicSamples.push(s);
-    } else if (typeof s.vector[0] === 'number') {
-      staticSamples.push(s);
-    }
-  }
 
   // 2. Step Continuous Dynamic Motion (DTW) Recognizer BEFORE static velocity gating
   const dynamicMatch = liveDtwRecognizer.step(
@@ -478,6 +498,21 @@ export function classifyLandmarksWithDataset(multiHandLandmarks) {
       margin: dynamicMatch.margin,
       mode: 'dynamic',
       topCandidates: dynamicMatch.topCandidates || [],
+      smoothedLandmarks: smoothedMultiHandLandmarks,
+      isFastTransition,
+      maxVelocity,
+    };
+  }
+
+  // Suppress spurious static pose match while finger lingers briefly after completing a DTW sign (e.g. 'Z')
+  if (liveDtwRecognizer.isInPostMatchSettle()) {
+    return {
+      gesture: 'Signing...',
+      confidence: 0.55,
+      distance: null,
+      closestGesture: null,
+      mode: 'dynamic_settle',
+      topCandidates: liveDtwRecognizer.latestTopDynamic || [],
       smoothedLandmarks: smoothedMultiHandLandmarks,
       isFastTransition,
       maxVelocity,

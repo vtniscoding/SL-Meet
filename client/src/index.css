@@ -4,7 +4,7 @@
 
 @layer base {
   html, body, #root {
-    @apply h-screen w-screen overflow-hidden bg-white text-slate-900 font-sans antialiased selection:bg-blue-500 selection:text-white;
+    @apply h-screen w-screen overflow-hidden bg-transparent text-slate-900 font-sans antialiased selection:bg-blue-500 selection:text-white;
   }
 
   *, *::before, *::after {
@@ -25,7 +25,8 @@
 
 /* Accessibility focus indicator for Caption UI controls */
 [data-caption-ui] :focus-visible,
-aside[aria-label="Caption History"] :focus-visible {
+aside[aria-label="Caption History"] :focus-visible,
+.focus-ring:focus-visible {
   outline: 2px solid #8AB4F8 !important;
   outline-offset: 2px !important;
 }

@@ -26,8 +26,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    minWidth: 1024,
-    minHeight: 680,
+    minWidth: 480,
+    minHeight: 500,
     icon: iconPath,
     autoHideMenuBar: true,
     frame: false,
@@ -222,6 +222,7 @@ ipcMain.handle('window-enter-pip', () => {
   });
 
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
+  mainWindow.setBackgroundColor('#121212');
   isPipMode = true;
   mainWindow.webContents.send('pip-mode-changed', true);
   return true;
@@ -231,7 +232,7 @@ ipcMain.handle('window-exit-pip', () => {
   if (!mainWindow || mainWindow.isDestroyed() || !isPipMode) return false;
 
   mainWindow.setAlwaysOnTop(false);
-  mainWindow.setMinimumSize(1024, 680);
+  mainWindow.setMinimumSize(480, 500);
 
   if (prePipBounds) {
     mainWindow.setBounds(prePipBounds);
@@ -244,6 +245,7 @@ ipcMain.handle('window-exit-pip', () => {
     mainWindow.maximize();
   }
 
+  mainWindow.setBackgroundColor('#F2F4F7');
   isPipMode = false;
   mainWindow.webContents.send('pip-mode-changed', false);
   return true;

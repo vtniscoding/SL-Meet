@@ -195,26 +195,27 @@ export function useHandTrackingWorker({
         }
       }
 
-      // Gesture classification and notification
-      let detectedGesture = '';
-      let detectedConfidence = 0;
+      // Gesture classification (runs even on empty landmarks so DTW can finalize end-of-stroke hand drops)
+      const hasHands = Boolean(
+        results.multiHandLandmarks && results.multiHandLandmarks.length > 0
+      );
+      const classification = classifyGesture(
+        hasHands ? results.multiHandLandmarks[0] : null,
+        hasHands ? results.multiHandedness?.[0] : null,
+        results.multiHandLandmarks || [],
+        results.multiHandedness || []
+      );
+      const detectedGesture = classification.gesture || '';
+      const detectedConfidence = classification.confidence || 0;
 
-      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        const { gesture, confidence } = classifyGesture(
-          results.multiHandLandmarks[0],
-          results.multiHandedness?.[0],
-          results.multiHandLandmarks,
-          results.multiHandedness
-        );
-        detectedGesture = gesture || '';
-        detectedConfidence = confidence || 0;
-        if (gesture && gesture !== 'Signing...' && onGestureDetectedRef.current) {
-          onGestureDetectedRef.current({ gesture, confidence });
-        }
-      } else {
-        if (onGestureDetectedRef.current) {
-          onGestureDetectedRef.current(null);
-        }
+      if (detectedGesture && detectedGesture !== 'Signing...' && onGestureDetectedRef.current) {
+        onGestureDetectedRef.current({
+          gesture: detectedGesture,
+          confidence: detectedConfidence,
+          mode: classification.mode,
+        });
+      } else if (!hasHands && onGestureDetectedRef.current) {
+        onGestureDetectedRef.current(null);
       }
 
       // Publish live tracking snapshot for the detached 60fps Hand Motion OS Window

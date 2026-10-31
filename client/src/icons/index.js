@@ -23,19 +23,24 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faVideo,
   faVideoSlash,
+  faMicrophone,
+  faMicrophoneSlash,
   faHouseUser,
   faComment,
   faCamera,
   faGear,
+  faClosedCaptioning,
+  faPhoneSlash,
+  faHands,
 } from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
 
 import {
   // Meeting Controls
-  Mic,
-  MicOff,
   PhoneOff,
   Monitor,
+  MonitorUp,
+  ALargeSmall,
   Pin,
   PinOff,
   Maximize2,
@@ -49,12 +54,14 @@ import {
   MoreVertical,
   Check,
   ChevronDown,
+  ChevronUp,
   UserCheck,
   UserX,
   Volume2,
 
   // AI, Vision & Captions
   Captions,
+  AudioLines,
   Eye,
   EyeOff,
   Hand,
@@ -116,8 +123,50 @@ import {
 /* =========================================================================
    1. Meeting Controls (Audio, Video, Screen Share, Call Management)
    ========================================================================= */
-export const MicOnIcon = Mic;
-export const MicOffIcon = MicOff;
+// Font Awesome solid microphone/microphone-slash icons for audio controls
+// Normalized to 576x512 viewBox to match faMicrophoneSlash and faVideo/faVideoSlash,
+// eliminating any size differences or layout shifts when toggling mute state.
+export const MicOnIcon = ({ className = '', size, style, ...props }) => {
+  const customStyle = {
+    overflow: 'visible',
+    ...(size ? { width: size, height: size } : {}),
+    ...style,
+  };
+  return React.createElement(
+    'svg',
+    {
+      viewBox: '-96 0 576 512',
+      fill: 'currentColor',
+      className,
+      style: customStyle,
+      role: 'img',
+      'aria-hidden': 'true',
+      ...props,
+    },
+    React.createElement('path', { d: faMicrophone.icon[4] })
+  );
+};
+
+export const MicOffIcon = ({ className = '', size, style, ...props }) => {
+  const customStyle = {
+    overflow: 'visible',
+    ...(size ? { width: size, height: size } : {}),
+    ...style,
+  };
+  return React.createElement(
+    'svg',
+    {
+      viewBox: '0 0 576 512',
+      fill: 'currentColor',
+      className,
+      style: customStyle,
+      role: 'img',
+      'aria-hidden': 'true',
+      ...props,
+    },
+    React.createElement('path', { d: faMicrophoneSlash.icon[4] })
+  );
+};
 
 // Font Awesome video/video-slash icons for camera controls
 export const CameraOnIcon = ({ className = '', size, style, ...props }) => {
@@ -139,8 +188,16 @@ export const CameraOffIcon = ({ className = '', size, style, ...props }) => {
     ...props,
   });
 };
-export const ScreenShareIcon = Monitor;
-export const EndCallIcon = PhoneOff;
+export const ScreenShareIcon = MonitorUp;
+export const EndCallIcon = ({ className = '', size, style, ...props }) => {
+  const customStyle = size ? { width: size, height: size, ...style } : style;
+  return React.createElement(FontAwesomeIcon, {
+    icon: faPhoneSlash,
+    className,
+    style: customStyle,
+    ...props,
+  });
+};
 export const PinIcon = Pin;
 export const UnpinIcon = PinOff;
 export const VolumeIcon = Volume2;
@@ -158,6 +215,7 @@ export const MinimizePipIcon = Minimize2;
 export const MoreOptionsIcon = MoreVertical;
 export const CheckmarkIcon = Check;
 export const ChevronDownIcon = ChevronDown;
+export const ChevronUpIcon = ChevronUp;
 export const ViewDropdownIcon = ChevronDown;
 
 // Zoom-Style Solid / Filled Layout Icons
@@ -198,31 +256,57 @@ export const ZoomSideBySideFillIcon = ({ className = 'w-4 h-4', ...props }) =>
 /* =========================================================================
    2. AI, Vision, Gesture & Captions
    ========================================================================= */
-export const CaptionsIcon = Captions;
+export const CaptionsIcon = ({ className = '', size, style, ...props }) => {
+  const customStyle = size ? { width: size, height: size, ...style } : style;
+  return React.createElement(FontAwesomeIcon, {
+    icon: faClosedCaptioning,
+    className,
+    style: customStyle,
+    ...props,
+  });
+};
 export const HandTrackingOnIcon = Eye;
 export const HandTrackingOffIcon = EyeOff;
 export const SignGestureIcon = Hand;
 export const AiTranslateIcon = Sparkles;
+export const SparklesIcon = Sparkles;
 export const TextFontIcon = Type;
 export const GlobeIcon = Globe;
-export const TtFontSizeIcon = ({ className = 'w-4 h-4', ...props }) =>
-  React.createElement(
+export const HandsIcon = ({ className = '', size, style, ...props }) => {
+  const customStyle = size ? { width: size, height: size, ...style } : style;
+  return React.createElement(FontAwesomeIcon, {
+    icon: faHands,
+    className,
+    style: customStyle,
+    ...props,
+  });
+};
+export const AudioLinesIcon = AudioLines;
+export const MicAudioLinesIcon = AudioLines;
+export const TtFontSizeIcon = ({ className = 'w-5 h-5', size = 20, style, ...props }) => {
+  const customStyle = size ? { width: size, height: size, minWidth: size, minHeight: size, ...style } : style;
+  return React.createElement(
     'svg',
     {
+      xmlns: 'http://www.w3.org/2000/svg',
       viewBox: '0 0 24 24',
       fill: 'none',
       stroke: 'currentColor',
       strokeWidth: '2',
       strokeLinecap: 'round',
       strokeLinejoin: 'round',
-      className,
+      className: `${className} shrink-0`,
+      style: customStyle,
       ...props,
     },
-    React.createElement('polyline', { points: '4 7 4 4 14 4 14 7' }),
-    React.createElement('line', { x1: '9', y1: '4', x2: '9', y2: '20' }),
-    React.createElement('polyline', { points: '15 11 15 9 21 9 21 11' }),
-    React.createElement('line', { x1: '18', y1: '9', x2: '18', y2: '20' })
+    // Capital 'A' (Full standard icon height)
+    React.createElement('path', { d: 'm2.5 19 5-14 5 14' }),
+    React.createElement('path', { d: 'M4.5 14h6' }),
+    // Lowercase 'a'
+    React.createElement('path', { d: 'M15 19v-5.5a3 3 0 0 1 6 0V19' }),
+    React.createElement('path', { d: 'M21 16.5h-6' })
   );
+};
 export const TextAlignLeftIcon = AlignLeft;
 export const HardwareCameraIcon = Camera;
 export const AIFeatureIcon = Zap;
@@ -318,8 +402,12 @@ export const HistoryNavIcon = History;
    ========================================================================= */
 export const LoadingSpinnerIcon = Loader2;
 export const AlertWarningIcon = AlertTriangle;
+export const AlertTriangleIcon = AlertTriangle;
 export const AlertErrorIcon = AlertCircle;
 export const SuccessCheckIcon = CheckCircle2;
+export const CheckCircleIcon = CheckCircle2;
+export const Volume2Icon = Volume2;
+export const HandIcon = Hand;
 export const TimestampClockIcon = Clock;
 export const SystemHealthIcon = Activity;
 export const NetworkRadioIcon = Radio;
