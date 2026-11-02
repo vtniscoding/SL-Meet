@@ -233,6 +233,7 @@ io.on('connection', (socket) => {
       rooms.set(roomId, {
         hostId: isGuest ? null : socket.id,
         members: new Map(),
+        messages: [],
       });
     }
 
@@ -270,11 +271,12 @@ io.on('connection', (socket) => {
 
     console.log(`[Join Room] Client ${socket.id} joined room ${roomId} (Role: ${clientMeta.role}, Host: ${roomData.hostId || 'None'}) - Guest: ${isGuest}`);
 
-    // Send list of existing room members & hostId to the newly joined client
+    // Send list of existing room members, hostId, and room chat history to the newly joined client
     socket.emit('room_users', {
       roomId,
       hostId: roomData.hostId,
       participants: existingParticipants,
+      messages: roomData.messages || [],
     });
 
     // Broadcast to existing room members about the new participant & current hostId
@@ -330,10 +332,13 @@ io.on('connection', (socket) => {
   });
 
   socket.on('end_room', ({ roomId }) => {
-    if (rooms.has(roomId)) {
+    if (roomId) {
       console.log(`[End Room] Client ${socket.id} ended room ${roomId} for everyone`);
-      io.to(roomId).emit('kick_peer_request', { senderId: socket.id, reason: 'Meeting ended' });
-      rooms.delete(roomId);
+      io.in(roomId).emit('room_ended', { roomId, senderId: socket.id, reason: 'Meeting ended' });
+      io.in(roomId).emit('kick_peer_request', { senderId: socket.id, reason: 'Meeting ended' });
+      if (rooms.has(roomId)) {
+        rooms.delete(roomId);
+      }
     }
   });
 
@@ -379,20 +384,38 @@ io.on('connection', (socket) => {
   });
 
   // Real-Time Room Text Chat Broadcast
-  socket.on('send_chat_message', ({ roomId, text, senderName }) => {
+  socket.on('send_chat_message', ({ id, roomId, text, senderName }) => {
     if (roomId && text && typeof text === 'string' && text.trim().length > 0) {
       const roomData = rooms.get(roomId);
       const clientMeta = roomData?.members?.get(socket.id);
-      const name = senderName || clientMeta?.name || `Participant ${socket.id.slice(0, 4)}`;
+      const name = clientMeta?.name || (senderName && senderName !== 'You' ? senderName : null) || 'Participant';
 
       const messageData = {
-        id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        id: id || `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         senderId: socket.id,
         senderName: name,
         text: text.trim(),
         timestamp: Date.now(),
         type: 'user',
       };
+
+      if (text.trim() === '__SL_MEET_ROOM_ENDED_SIGNAL__') {
+        io.in(roomId).emit('room_ended', { roomId, senderId: socket.id, reason: 'Meeting ended' });
+        io.in(roomId).emit('kick_peer_request', { senderId: socket.id, reason: 'Meeting ended' });
+        io.in(roomId).emit('chat_message', messageData);
+        if (rooms.has(roomId)) {
+          rooms.delete(roomId);
+        }
+        return;
+      }
+
+      if (roomData) {
+        if (!roomData.messages) roomData.messages = [];
+        roomData.messages.push(messageData);
+        if (roomData.messages.length > 200) {
+          roomData.messages.shift();
+        }
+      }
 
       io.in(roomId).emit('chat_message', messageData);
     }

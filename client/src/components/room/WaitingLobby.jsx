@@ -1,18 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   MicOnIcon as Mic,
   MicOffIcon as MicOff,
   CameraOnIcon as Video,
   CameraOffIcon as VideoOff,
-  UserAvatarIcon as User,
-  HardwareCameraIcon as Camera,
   Volume2Icon as Volume2,
   BackNavIcon as ArrowLeft,
-  SettingsIcon,
   ChevronDownIcon,
+  CheckmarkIcon,
 } from '../../icons';
 import CommunicationModePicker from './CommunicationModePicker';
-import LobbyToolsCheck from './LobbyToolsCheck';
 import WindowControls from '../common/WindowControls';
 import ProfileAvatarMenu from '../common/ProfileAvatarMenu';
 
@@ -43,6 +40,29 @@ export default function WaitingLobby({
   const [isPlayingChime, setIsPlayingChime] = useState(false);
   const [speakerOutputLevel, setSpeakerOutputLevel] = useState(0);
   const [isTestingMic, setIsTestingMic] = useState(false);
+  const [isVideoReady, setIsVideoReady] = useState(false);
+  const [openDropdown, setOpenDropdown] = useState(null); // 'mic' | 'speaker' | 'camera' | null
+  const dropdownContainerRef = useRef(null);
+
+  // Close dropdown on click outside or Escape
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownContainerRef.current && !dropdownContainerRef.current.contains(event.target)) {
+        setOpenDropdown(null);
+      }
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setOpenDropdown(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   const {
     videoRef,
@@ -64,12 +84,31 @@ export default function WaitingLobby({
     toggleCamera,
   } = mediaState;
 
+  const currentAudioLabel =
+    audioDevices?.find((d) => d.deviceId === selectedAudioDeviceId)?.label ||
+    (audioDevices?.length > 0 ? audioDevices[0].label : 'Microphone');
+
+  const currentSpeakerLabel =
+    speakerDevices?.find((d) => d.deviceId === selectedSpeakerDeviceId)?.label ||
+    (speakerDevices?.length > 0 ? speakerDevices[0].label : 'Speakers');
+
+  const currentVideoLabel =
+    videoDevices?.find((d) => d.deviceId === selectedVideoDeviceId)?.label ||
+    (videoDevices?.length > 0 ? videoDevices[0].label : 'Camera');
+
   // Sync initialDisplayName if it becomes available asynchronously (e.g. from profile)
   useEffect(() => {
     if (initialDisplayName && !displayName) {
       setDisplayName(initialDisplayName);
     }
   }, [initialDisplayName]);
+
+  // Reset video ready state when camera turns off or stream is absent
+  useEffect(() => {
+    if (isCameraOff || !localStream) {
+      setIsVideoReady(false);
+    }
+  }, [isCameraOff, localStream]);
 
   // Bind localStream to video DOM element whenever Lobby mounts or stream updates
   useEffect(() => {
@@ -81,6 +120,9 @@ export default function WaitingLobby({
       videoEl.play().catch((err) => {
         console.warn('Lobby video stream autoplay:', err);
       });
+      if (videoEl.readyState >= 2) {
+        setIsVideoReady(true);
+      }
     }
   }, [localStream, videoRef, isCameraOff]);
 
@@ -218,8 +260,8 @@ export default function WaitingLobby({
             {/* Left Side: Camera Video Preview + Status Telemetry */}
             <div className="w-full lg:w-[54%] flex flex-col items-center">
               <div
-                className={`relative w-full aspect-video rounded-xl overflow-hidden flex items-center justify-center ${
-                  isCameraOff ? 'bg-slate-900' : 'bg-transparent'
+                className={`relative w-full aspect-video rounded-xl overflow-hidden flex items-center justify-center bg-[#202124] isolate border-2 transition-colors duration-150 ${
+                  isSpeaking && !isMuted ? 'border-[#22C55E]' : 'border-slate-200/90'
                 }`}
               >
                 {/* Live Local Video Feed */}
@@ -228,20 +270,24 @@ export default function WaitingLobby({
                   autoPlay
                   playsInline
                   muted
-                  className={`absolute inset-0 w-full h-full object-cover rounded-xl transform -scale-x-100 ${
-                    isCameraOff ? 'hidden' : 'block'
+                  onLoadedData={() => setIsVideoReady(true)}
+                  onPlaying={() => setIsVideoReady(true)}
+                  className={`absolute inset-0 w-full h-full object-cover transform -scale-x-100 ${
+                    isCameraOff || !isVideoReady ? 'hidden' : 'block'
                   }`}
                 />
 
-                {/* Camera Off Avatar Fallback */}
+                {/* Camera is off fallback */}
                 {isCameraOff && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 text-slate-400 space-y-2 p-4">
-                    <div className="w-16 h-16 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center shadow-inner">
-                      <User className="w-8 h-8 text-slate-400" />
-                    </div>
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-300 bg-slate-900 px-3 py-1 rounded-full border border-slate-800">
-                      Camera Off
-                    </span>
+                  <div className="text-sm font-medium text-slate-300 select-none">
+                    Camera is off
+                  </div>
+                )}
+
+                {/* Camera is starting fallback */}
+                {!isCameraOff && !isVideoReady && (
+                  <div className="text-sm font-medium text-slate-300 select-none">
+                    Camera is starting
                   </div>
                 )}
 
@@ -273,21 +319,286 @@ export default function WaitingLobby({
                     {isCameraOff ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
                   </button>
                 </div>
-
-                {/* Solid Active Speaker Border Overlay (Always on top) */}
-                <div
-                  className={`absolute inset-0 rounded-xl pointer-events-none z-20 transition-colors duration-150 border-[3px] ${
-                    isSpeaking && !isMuted ? 'border-[#22C55E]' : 'border-slate-200'
-                  }`}
-                />
               </div>
 
-              {/* Tools Status Telemetry Under Preview */}
-              <LobbyToolsCheck
-                isCameraOff={isCameraOff}
-                isMuted={isMuted}
-                audioLevel={audioLevel}
-              />
+              {/* 3 Outline Rounded Device Selectors Under Preview */}
+              <div
+                ref={dropdownContainerRef}
+                className="w-full mt-3 grid grid-cols-3 gap-2 relative"
+              >
+                {/* 1. Microphone Dropdown */}
+                <div className="relative min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => setOpenDropdown((prev) => (prev === 'mic' ? null : 'mic'))}
+                    title={currentAudioLabel}
+                    className={`w-full flex items-center justify-between gap-1.5 px-3 py-2 rounded-full border text-xs font-medium transition-all cursor-pointer shadow-2xs ${
+                      openDropdown === 'mic'
+                        ? 'border-[#1A73E8] bg-blue-50/60 text-[#1A73E8]'
+                        : 'border-slate-300 hover:border-slate-400 bg-white hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <Mic
+                        className={`w-4 h-4 shrink-0 ${
+                          openDropdown === 'mic' ? 'text-[#1A73E8]' : 'text-slate-500'
+                        }`}
+                      />
+                      <span className="truncate text-left text-[11px] sm:text-xs">
+                        {currentAudioLabel}
+                      </span>
+                    </div>
+                    <ChevronDownIcon
+                      className={`w-3.5 h-3.5 shrink-0 text-slate-400 transition-transform duration-200 ${
+                        openDropdown === 'mic' ? 'rotate-180 text-[#1A73E8]' : ''
+                      }`}
+                    />
+                  </button>
+
+                  {openDropdown === 'mic' && (
+                    <div className="absolute bottom-full mb-2 left-0 w-64 max-w-[calc(100vw-2rem)] bg-white rounded-2xl border border-slate-200/90 shadow-xl py-1.5 z-30 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                      <div className="px-3.5 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                        Microphone
+                      </div>
+                      <div className="max-h-48 overflow-y-auto py-0.5">
+                        {audioDevices && audioDevices.length > 0 ? (
+                          audioDevices.map((device, index) => {
+                            const isSelected =
+                              device.deviceId === selectedAudioDeviceId ||
+                              (!selectedAudioDeviceId && index === 0);
+                            return (
+                              <button
+                                key={device.deviceId || index}
+                                type="button"
+                                onClick={() => {
+                                  changeAudioDevice(device.deviceId);
+                                  setOpenDropdown(null);
+                                }}
+                                className={`w-full flex items-center justify-between px-3.5 py-2 text-xs text-left transition-colors cursor-pointer hover:bg-slate-50 ${
+                                  isSelected
+                                    ? 'text-[#1A73E8] font-semibold bg-blue-50/60'
+                                    : 'text-slate-700'
+                                }`}
+                              >
+                                <span className="truncate pr-2">
+                                  {device.label || `Microphone ${index + 1}`}
+                                </span>
+                                {isSelected && (
+                                  <CheckmarkIcon className="w-3.5 h-3.5 shrink-0 text-[#1A73E8]" />
+                                )}
+                              </button>
+                            );
+                          })
+                        ) : (
+                          <div className="px-3.5 py-2 text-xs text-slate-400 italic">
+                            No microphones found
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Microphone Test Section */}
+                      <div className="border-t border-slate-100 mt-1 pt-1.5 px-3.5 pb-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-medium text-slate-500">Test mic</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsTestingMic((prev) => !prev);
+                            }}
+                            className="text-[11px] font-semibold text-[#1A73E8] hover:text-[#1765CC] cursor-pointer"
+                          >
+                            {isTestingMic ? 'Stop' : 'Test'}
+                          </button>
+                        </div>
+                        {isTestingMic && (
+                          <div className="flex items-center space-x-2 mt-1.5">
+                            <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200/80">
+                              <div
+                                className="bg-emerald-500 h-full rounded-full transition-all duration-75"
+                                style={{ width: `${isMuted ? 0 : Math.max(0, audioLevel)}%` }}
+                              />
+                            </div>
+                            {isMuted && (
+                              <span className="text-[10px] text-amber-600 font-medium">Muted</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Speaker Dropdown */}
+                <div className="relative min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => setOpenDropdown((prev) => (prev === 'speaker' ? null : 'speaker'))}
+                    title={currentSpeakerLabel}
+                    className={`w-full flex items-center justify-between gap-1.5 px-3 py-2 rounded-full border text-xs font-medium transition-all cursor-pointer shadow-2xs ${
+                      openDropdown === 'speaker'
+                        ? 'border-[#1A73E8] bg-blue-50/60 text-[#1A73E8]'
+                        : 'border-slate-300 hover:border-slate-400 bg-white hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <Volume2
+                        className={`w-4 h-4 shrink-0 ${
+                          openDropdown === 'speaker' ? 'text-[#1A73E8]' : 'text-slate-500'
+                        }`}
+                      />
+                      <span className="truncate text-left text-[11px] sm:text-xs">
+                        {currentSpeakerLabel}
+                      </span>
+                    </div>
+                    <ChevronDownIcon
+                      className={`w-3.5 h-3.5 shrink-0 text-slate-400 transition-transform duration-200 ${
+                        openDropdown === 'speaker' ? 'rotate-180 text-[#1A73E8]' : ''
+                      }`}
+                    />
+                  </button>
+
+                  {openDropdown === 'speaker' && (
+                    <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-64 max-w-[calc(100vw-2rem)] bg-white rounded-2xl border border-slate-200/90 shadow-xl py-1.5 z-30 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                      <div className="px-3.5 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                        Speakers
+                      </div>
+                      <div className="max-h-48 overflow-y-auto py-0.5">
+                        {speakerDevices && speakerDevices.length > 0 ? (
+                          speakerDevices.map((device, index) => {
+                            const isSelected =
+                              device.deviceId === selectedSpeakerDeviceId ||
+                              (!selectedSpeakerDeviceId && index === 0);
+                            return (
+                              <button
+                                key={device.deviceId || index}
+                                type="button"
+                                onClick={() => {
+                                  changeSpeakerDevice(device.deviceId);
+                                  setOpenDropdown(null);
+                                }}
+                                className={`w-full flex items-center justify-between px-3.5 py-2 text-xs text-left transition-colors cursor-pointer hover:bg-slate-50 ${
+                                  isSelected
+                                    ? 'text-[#1A73E8] font-semibold bg-blue-50/60'
+                                    : 'text-slate-700'
+                                }`}
+                              >
+                                <span className="truncate pr-2">
+                                  {device.label || `Speaker ${index + 1}`}
+                                </span>
+                                {isSelected && (
+                                  <CheckmarkIcon className="w-3.5 h-3.5 shrink-0 text-[#1A73E8]" />
+                                )}
+                              </button>
+                            );
+                          })
+                        ) : (
+                          <div className="px-3.5 py-2 text-xs text-slate-500">Default Speaker</div>
+                        )}
+                      </div>
+
+                      {/* Speaker Test Section */}
+                      <div className="border-t border-slate-100 mt-1 pt-1.5 px-3.5 pb-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-medium text-slate-500">Test speaker</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleTestSpeaker();
+                            }}
+                            disabled={isPlayingChime}
+                            className="text-[11px] font-semibold text-[#1A73E8] hover:text-[#1765CC] cursor-pointer disabled:opacity-50"
+                          >
+                            {isPlayingChime ? 'Playing...' : 'Test sound'}
+                          </button>
+                        </div>
+                        {isPlayingChime && (
+                          <div className="mt-1.5 h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200/80">
+                            <div
+                              className="bg-[#1A73E8] h-full rounded-full transition-all duration-75"
+                              style={{ width: `${speakerOutputLevel}%` }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Camera Dropdown */}
+                <div className="relative min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => setOpenDropdown((prev) => (prev === 'camera' ? null : 'camera'))}
+                    title={currentVideoLabel}
+                    className={`w-full flex items-center justify-between gap-1.5 px-3 py-2 rounded-full border text-xs font-medium transition-all cursor-pointer shadow-2xs ${
+                      openDropdown === 'camera'
+                        ? 'border-[#1A73E8] bg-blue-50/60 text-[#1A73E8]'
+                        : 'border-slate-300 hover:border-slate-400 bg-white hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <Video
+                        className={`w-4 h-4 shrink-0 ${
+                          openDropdown === 'camera' ? 'text-[#1A73E8]' : 'text-slate-500'
+                        }`}
+                      />
+                      <span className="truncate text-left text-[11px] sm:text-xs">
+                        {currentVideoLabel}
+                      </span>
+                    </div>
+                    <ChevronDownIcon
+                      className={`w-3.5 h-3.5 shrink-0 text-slate-400 transition-transform duration-200 ${
+                        openDropdown === 'camera' ? 'rotate-180 text-[#1A73E8]' : ''
+                      }`}
+                    />
+                  </button>
+
+                  {openDropdown === 'camera' && (
+                    <div className="absolute bottom-full mb-2 right-0 w-64 max-w-[calc(100vw-2rem)] bg-white rounded-2xl border border-slate-200/90 shadow-xl py-1.5 z-30 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                      <div className="px-3.5 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                        Camera
+                      </div>
+                      <div className="max-h-48 overflow-y-auto py-0.5">
+                        {videoDevices && videoDevices.length > 0 ? (
+                          videoDevices.map((device, index) => {
+                            const isSelected =
+                              device.deviceId === selectedVideoDeviceId ||
+                              (!selectedVideoDeviceId && index === 0);
+                            return (
+                              <button
+                                key={device.deviceId || index}
+                                type="button"
+                                onClick={() => {
+                                  changeVideoDevice(device.deviceId);
+                                  setOpenDropdown(null);
+                                }}
+                                className={`w-full flex items-center justify-between px-3.5 py-2 text-xs text-left transition-colors cursor-pointer hover:bg-slate-50 ${
+                                  isSelected
+                                    ? 'text-[#1A73E8] font-semibold bg-blue-50/60'
+                                    : 'text-slate-700'
+                                }`}
+                              >
+                                <span className="truncate pr-2">
+                                  {device.label || `Camera ${index + 1}`}
+                                </span>
+                                {isSelected && (
+                                  <CheckmarkIcon className="w-3.5 h-3.5 shrink-0 text-[#1A73E8]" />
+                                )}
+                              </button>
+                            );
+                          })
+                        ) : (
+                          <div className="px-3.5 py-2 text-xs text-slate-400 italic">
+                            No cameras found
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Right Side: Identity, Inline Mode Selection, & Join Action */}
@@ -318,7 +629,7 @@ export default function WaitingLobby({
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleJoinClick();
                   }}
-                  className={`w-full bg-white text-slate-800 text-xs rounded-xl px-3.5 py-2.5 border transition-colors focus-ring ${
+                  className={`w-full bg-white text-slate-800 text-xs rounded-xl px-3.5 py-2.5 border transition-colors outline-none focus:outline-none focus:ring-0 ${
                     nameError
                       ? 'border-red-400 focus:border-red-500'
                       : 'border-slate-300 focus:border-[#1A73E8]'
@@ -355,126 +666,6 @@ export default function WaitingLobby({
               >
                 Join now
               </button>
-
-              {/* Collapsible Audio & Video Hardware Settings */}
-              <details className="group/settings border border-slate-200/90 rounded-xl bg-slate-50/70 overflow-hidden">
-                <summary className="flex items-center justify-between px-3.5 py-2 cursor-pointer text-xs font-semibold text-slate-700 hover:text-slate-900 select-none list-none">
-                  <div className="flex items-center space-x-2">
-                    <SettingsIcon className="w-3.5 h-3.5 text-[#1A73E8]" />
-                    <span>Audio & video settings</span>
-                  </div>
-                  <ChevronDownIcon className="w-3.5 h-3.5 text-slate-400 group-open/settings:rotate-180 transition-transform" />
-                </summary>
-
-                <div className="p-3.5 pt-1.5 space-y-3 border-t border-slate-200/60 bg-white">
-                  {/* Camera Selector */}
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-semibold text-slate-600 flex items-center space-x-1.5">
-                      <Camera className="w-3.5 h-3.5 text-slate-500" />
-                      <span>Camera</span>
-                    </label>
-                    <select
-                      value={selectedVideoDeviceId}
-                      onChange={(e) => changeVideoDevice(e.target.value)}
-                      className="w-full bg-slate-50 text-slate-800 text-xs rounded-lg px-2.5 py-1.5 border border-slate-200 focus:outline-none focus:border-[#1A73E8] cursor-pointer"
-                    >
-                      {videoDevices.map((device, index) => (
-                        <option key={device.deviceId || index} value={device.deviceId}>
-                          {device.label || `Camera ${index + 1}`}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Microphone Selector & Live Input Level Meter */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-semibold text-slate-600 flex items-center space-x-1.5">
-                        <Mic className="w-3.5 h-3.5 text-slate-500" />
-                        <span>Microphone</span>
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setIsTestingMic((prev) => !prev)}
-                        className="text-[10px] font-semibold text-[#1A73E8] hover:text-[#1765CC] hover:underline cursor-pointer"
-                      >
-                        {isTestingMic ? 'Stop test' : 'Test microphone'}
-                      </button>
-                    </div>
-                    <select
-                      value={selectedAudioDeviceId}
-                      onChange={(e) => changeAudioDevice(e.target.value)}
-                      className="w-full bg-slate-50 text-slate-800 text-xs rounded-lg px-2.5 py-1.5 border border-slate-200 focus:outline-none focus:border-[#1A73E8] cursor-pointer"
-                    >
-                      {audioDevices.map((device, index) => (
-                        <option key={device.deviceId || index} value={device.deviceId}>
-                          {device.label || `Microphone ${index + 1}`}
-                        </option>
-                      ))}
-                    </select>
-
-                    {/* Live Input Level Meter (Revealed on Test) */}
-                    {isTestingMic && (
-                      <div className="flex items-center space-x-2 pt-1 animate-in fade-in duration-150">
-                        <span className="text-[10px] text-slate-500 font-medium shrink-0">Input level</span>
-                        <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200/80">
-                          <div
-                            className="bg-emerald-500 h-full rounded-full transition-all duration-75"
-                            style={{ width: `${isMuted ? 0 : Math.max(0, audioLevel)}%` }}
-                          />
-                        </div>
-                        {isMuted && (
-                          <span className="text-[10px] text-amber-600 font-medium shrink-0">Muted</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Speaker Selector & Test with Output Level Meter */}
-                  {speakerDevices.length > 0 && (
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <label className="text-[11px] font-semibold text-slate-600 flex items-center space-x-1.5">
-                          <Volume2 className="w-3.5 h-3.5 text-slate-500" />
-                          <span>Speakers</span>
-                        </label>
-                        <button
-                          type="button"
-                          onClick={handleTestSpeaker}
-                          disabled={isPlayingChime}
-                          className="text-[10px] font-semibold text-[#1A73E8] hover:text-[#1765CC] hover:underline cursor-pointer disabled:opacity-60"
-                        >
-                          {isPlayingChime ? 'Playing chime...' : 'Test speaker'}
-                        </button>
-                      </div>
-                      <select
-                        value={selectedSpeakerDeviceId}
-                        onChange={(e) => changeSpeakerDevice(e.target.value)}
-                        className="w-full bg-slate-50 text-slate-800 text-xs rounded-lg px-2.5 py-1.5 border border-slate-200 focus:outline-none focus:border-[#1A73E8] cursor-pointer"
-                      >
-                        {speakerDevices.map((device, index) => (
-                          <option key={device.deviceId || index} value={device.deviceId}>
-                            {device.label || `Speaker ${index + 1}`}
-                          </option>
-                        ))}
-                      </select>
-
-                      {/* Output Level Meter (Revealed during chime test) */}
-                      {isPlayingChime && (
-                        <div className="flex items-center space-x-2 pt-1 animate-in fade-in duration-150">
-                          <span className="text-[10px] text-slate-500 font-medium shrink-0">Output level</span>
-                          <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200/80">
-                            <div
-                              className="bg-[#1A73E8] h-full rounded-full transition-all duration-75"
-                              style={{ width: `${speakerOutputLevel}%` }}
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </details>
             </div>
           </main>
         </div>

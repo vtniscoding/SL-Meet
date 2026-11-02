@@ -12,7 +12,6 @@ import MeetingControlBar from './room/MeetingControlBar';
 import MeetingChatDrawer from './room/MeetingChatDrawer';
 import MeetingParticipantsDrawer from './room/MeetingParticipantsDrawer';
 import CaptionDock from './room/captions/CaptionDock';
-import RolePromptModal from './room/RolePromptModal';
 import MeetingConfirmModal from './room/MeetingConfirmModal';
 import MeetingPipView from './room/MeetingPipView';
 import HandMotionWindow from './room/HandMotionWindow';
@@ -25,6 +24,7 @@ import {
 } from '../icons';
 import { ROLES } from '../constants/roles';
 import { getRandomSpeakerColor, colorForSender } from './room/captions/captionUtils';
+import { supabase } from '../utils/supabase';
 
 /**
  * Top-Level Room Layout Container Component
@@ -40,7 +40,6 @@ export default function RoomView({
 }) {
   // Participant Communication Role State ('signer' | 'non_signer')
   const [userRole, setUserRole] = useState(() => initialRole || ROLES.NON_SIGNER);
-  const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
 
   // Independent Caption State & Mode (STT / SLT)
   const [isCaptionsEnabled, setIsCaptionsEnabled] = useState(false);
@@ -89,6 +88,7 @@ export default function RoomView({
     isConnected,
     socketId,
     hostId,
+    isHost,
     remoteGestures,
     roomUsers,
     presentingUsers,
@@ -322,6 +322,7 @@ export default function RoomView({
     isOpen: false,
     title: '',
     description: '',
+    infoPill: '',
     actions: [],
   });
 
@@ -409,19 +410,27 @@ export default function RoomView({
   const prevLocalPresentingRef = useRef(false);
   const prevRemotePresenterRef = useRef(null);
   const lastMessageCountRef = useRef(0);
+  const savedLayoutModeRef = useRef('tiled');
+  const layoutModeRef = useRef(layoutMode);
+  useEffect(() => {
+    layoutModeRef.current = layoutMode;
+  }, [layoutMode]);
 
-  // Role switching callback
-  const handleChangeRole = useCallback(
-    (newRole) => {
-      setUserRole(newRole);
-      changeRole(newRole);
-      if (newRole === ROLES.NON_SIGNER) {
-        setIsHandTrackingEnabled(false);
+  // Toggle Sign Language Support callback ('signer' <-> 'non_signer')
+  const handleToggleSignLanguageSupport = useCallback(() => {
+    const nextRole = userRole === ROLES.SIGNER ? ROLES.NON_SIGNER : ROLES.SIGNER;
+    setUserRole(nextRole);
+    changeRole(nextRole);
+    if (nextRole === ROLES.NON_SIGNER) {
+      setIsHandTrackingEnabled(false);
+      if (activeSignerId === 'local') {
+        setActiveSignerId(null);
       }
-      setIsRoleModalOpen(false);
-    },
-    [changeRole]
-  );
+      if (window.electronAPI?.closeHandMotion) {
+        window.electronAPI.closeHandMotion();
+      }
+    }
+  }, [userRole, changeRole, activeSignerId]);
 
   // Dedicated callback for switching subtitle mode (SLT / STT) from CaptionDock dropdown
   // Completely decoupled from role and hand tracking
@@ -438,22 +447,32 @@ export default function RoomView({
     userRoleRef.current = userRole;
   }, [userRole]);
 
+  const userMetaRef = useRef({
+    name: userName || 'Participant',
+    userId: currentUser?.id || null,
+    isGuest: !currentUser,
+    role: userRole,
+    avatarColor: localAvatarColor,
+    avatarUrl: localAvatarUrl,
+  });
+
   useEffect(() => {
-    if (!isConnected) {
-      toggleConnection();
-    }
-    joinRoom(roomId, {
+    userMetaRef.current = {
       name: userName || 'Participant',
       userId: currentUser?.id || null,
       isGuest: !currentUser,
-      role: userRoleRef.current,
+      role: userRole,
       avatarColor: localAvatarColor,
       avatarUrl: localAvatarUrl,
-    });
+    };
+  }, [userName, currentUser?.id, userRole, localAvatarColor, localAvatarUrl]);
+
+  useEffect(() => {
+    joinRoom(roomId, userMetaRef.current);
     return () => {
       leaveRoom();
     };
-  }, [roomId, userName, currentUser, localAvatarColor, localAvatarUrl]);
+  }, [roomId]);
 
   // Broadcast local camera, mic, and AI Vision status changes to all room peers
   useEffect(() => {
@@ -462,25 +481,61 @@ export default function RoomView({
     }
   }, [isMuted, isCameraOff, isHandTrackingEnabled, isConnected, sendMediaStatusChange]);
 
-  // Listen for host remote moderation events (remote mute request / kicked)
+  // Listen for host remote moderation events (remote mute request / kicked / room ended)
+  const handleLeaveRef = useRef(null);
+  const roomControlChannelRef = useRef(null);
+
   useEffect(() => {
     const handleRemoteMute = () => {
       if (muteMic) {
         muteMic();
       }
     };
-    const handleRemoteKick = () => {
-      handleLeave();
+    const handleRemoteLeave = () => {
+      if (handleLeaveRef.current) {
+        handleLeaveRef.current();
+      }
     };
 
     window.addEventListener('sl_meet_mute_local_mic', handleRemoteMute);
-    window.addEventListener('sl_meet_kicked_from_room', handleRemoteKick);
+    window.addEventListener('sl_meet_kicked_from_room', handleRemoteLeave);
+    window.addEventListener('sl_meet_room_ended', handleRemoteLeave);
 
     return () => {
       window.removeEventListener('sl_meet_mute_local_mic', handleRemoteMute);
-      window.removeEventListener('sl_meet_kicked_from_room', handleRemoteKick);
+      window.removeEventListener('sl_meet_kicked_from_room', handleRemoteLeave);
+      window.removeEventListener('sl_meet_room_ended', handleRemoteLeave);
     };
   }, [muteMic]);
+
+  // Subscribe to Supabase Realtime room control channel & room status changes for instant multi-device room termination
+  useEffect(() => {
+    if (!roomId) return;
+    const channel = supabase
+      .channel(`sl-meet-room-control-${roomId}`)
+      .on('broadcast', { event: 'room_ended' }, () => {
+        if (handleLeaveRef.current) {
+          handleLeaveRef.current();
+        }
+      })
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
+        (payload) => {
+          if (payload?.new?.status === 'ended' && handleLeaveRef.current) {
+            handleLeaveRef.current();
+          }
+        }
+      )
+      .subscribe();
+
+    roomControlChannelRef.current = channel;
+
+    return () => {
+      roomControlChannelRef.current = null;
+      supabase.removeChannel(channel);
+    };
+  }, [roomId]);
 
   // Sync latest remote gesture into ASL Sentence Aggregator
   useEffect(() => {
@@ -508,8 +563,14 @@ export default function RoomView({
   useEffect(() => {
     sendPresentingStatus(isScreenSharing, screenStream ? screenStream.id : null);
     if (isScreenSharing && !prevLocalPresentingRef.current) {
+      if (layoutModeRef.current !== 'sidebar') {
+        savedLayoutModeRef.current = layoutModeRef.current;
+      }
       setLayoutMode('sidebar');
       setPinnedId('local-screen');
+    } else if (!isScreenSharing && prevLocalPresentingRef.current) {
+      setPinnedId((prevPinned) => (prevPinned === 'local-screen' ? null : prevPinned));
+      setLayoutMode((prevMode) => (prevMode === 'sidebar' ? (savedLayoutModeRef.current || 'tiled') : prevMode));
     }
     prevLocalPresentingRef.current = isScreenSharing;
   }, [isScreenSharing, screenStream, sendPresentingStatus]);
@@ -518,12 +579,16 @@ export default function RoomView({
   useEffect(() => {
     const activePeerPresenter = Object.keys(presentingUsers).find((id) => presentingUsers[id]?.isPresenting);
     if (activePeerPresenter && activePeerPresenter !== prevRemotePresenterRef.current) {
+      if (layoutModeRef.current !== 'sidebar') {
+        savedLayoutModeRef.current = layoutModeRef.current;
+      }
       setLayoutMode('sidebar');
       setPinnedId(`${activePeerPresenter}-screen`);
       prevRemotePresenterRef.current = activePeerPresenter;
     } else if (!activePeerPresenter && prevRemotePresenterRef.current) {
       const prevScreenId = `${prevRemotePresenterRef.current}-screen`;
       setPinnedId((prevPinned) => (prevPinned === prevScreenId ? null : prevPinned));
+      setLayoutMode((prevMode) => (prevMode === 'sidebar' ? (savedLayoutModeRef.current || 'tiled') : prevMode));
       prevRemotePresenterRef.current = null;
     }
   }, [presentingUsers]);
@@ -566,6 +631,7 @@ export default function RoomView({
   const localDisplayName = userName ? `${userName} (You)` : 'You';
   const localCameraParticipant = {
     id: 'local',
+    userId: socketId,
     name: localDisplayName,
     role: userRole,
     avatarColor: localAvatarColor,
@@ -575,7 +641,7 @@ export default function RoomView({
     isCameraOff,
     isMuted,
     isSpeaking,
-    isActiveSpeaker: true,
+    isActiveSpeaker: isSpeaking && !isMuted,
     isAiVisionActive: isHandTrackingEnabled,
     stream: localStream,
   };
@@ -583,6 +649,7 @@ export default function RoomView({
   const localPresentationParticipant = isScreenSharing
     ? {
         id: 'local-screen',
+        userId: `${socketId}-screen`,
         name: userName ? `${userName} (Presentation)` : 'You (Presentation)',
         role: userRole,
         avatarColor: localAvatarColor,
@@ -716,31 +783,89 @@ export default function RoomView({
     });
   };
 
+  const handleEndRoomForEveryone = async () => {
+    if (endRoom) {
+      endRoom(roomId);
+    }
+    try {
+      if (roomControlChannelRef.current) {
+        roomControlChannelRef.current.send({
+          type: 'broadcast',
+          event: 'room_ended',
+          payload: { roomId },
+        });
+      }
+    } catch {}
+    try {
+      if (roomId) {
+        localStorage.setItem(`sl_meet_ended_room_${roomId}`, Date.now().toString());
+        localStorage.removeItem(`sl_meet_chat_${roomId}`);
+      }
+    } catch {}
+    try {
+      if (roomId) {
+        supabase
+          .from('rooms')
+          .update({ status: 'ended' })
+          .eq('id', roomId)
+          .then(() => {})
+          .catch((err) => console.warn('Could not update room status in Supabase:', err));
+      }
+    } catch (err) {
+      console.warn('Could not update room status in Supabase:', err);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    handleLeave();
+  };
+
   const handleRequestLeave = () => {
-    setConfirmModalConfig({
-      isOpen: true,
-      title: 'End the call or just leave?',
-      description: 'You can just leave the call if you don’t want to end it for everyone else',
-      actions: [
-        {
-          label: 'Just leave the call',
-          onClick: () => {
-            setConfirmModalConfig((prev) => ({ ...prev, isOpen: false }));
-            handleLeave();
+    const isUserHost = Boolean(isHost || (socketId && hostId && socketId === hostId));
+    if (isUserHost) {
+      setConfirmModalConfig({
+        isOpen: true,
+        title: 'Leave meeting or end for all?',
+        description:
+          'As the meeting host, you can leave the call or end the meeting for everyone in the room.',
+        infoPill:
+          'Ending the call will disconnect everyone and archive this room session.',
+        actions: [
+          {
+            label: 'Leave the call',
+            variant: 'secondary',
+            onClick: () => {
+              setConfirmModalConfig((prev) => ({ ...prev, isOpen: false }));
+              handleLeave();
+            },
           },
-        },
-        {
-          label: 'End the call for everyone',
-          onClick: () => {
-            setConfirmModalConfig((prev) => ({ ...prev, isOpen: false }));
-            if (endRoom) {
-              endRoom();
-            }
-            handleLeave();
+          {
+            label: 'End call for everyone',
+            variant: 'danger',
+            onClick: () => {
+              setConfirmModalConfig((prev) => ({ ...prev, isOpen: false }));
+              handleEndRoomForEveryone();
+            },
           },
-        },
-      ],
-    });
+        ],
+      });
+    } else {
+      setConfirmModalConfig({
+        isOpen: true,
+        title: 'Leave the call?',
+        description:
+          'Are you sure you want to leave this meeting? You can rejoin anytime using the meeting code.',
+        infoPill: '',
+        actions: [
+          {
+            label: 'Leave the call',
+            variant: 'danger',
+            onClick: () => {
+              setConfirmModalConfig((prev) => ({ ...prev, isOpen: false }));
+              handleLeave();
+            },
+          },
+        ],
+      });
+    }
   };
 
   const handleRequestHandTracking = () => {
@@ -755,7 +880,10 @@ export default function RoomView({
     setConfirmModalConfig({
       isOpen: true,
       title: 'Turn on AI Vision?',
-      description: 'Camera will track your hand gestures to interpret American Sign Language (ASL) in real time',
+      description:
+        'Camera will track your hand gestures to interpret American Sign Language (ASL) in real time.',
+      infoPill:
+        'Video frames are processed locally on your device for complete privacy and 60 FPS responsiveness.',
       actions: [
         {
           label: 'Cancel',
@@ -766,6 +894,7 @@ export default function RoomView({
         },
         {
           label: 'Turn on',
+          variant: 'brand',
           onClick: () => {
             setConfirmModalConfig((prev) => ({ ...prev, isOpen: false }));
             setIsHandTrackingEnabled(true);
@@ -788,6 +917,7 @@ export default function RoomView({
     leaveRoom();
     onLeaveRoom();
   };
+  handleLeaveRef.current = handleLeave;
 
   const handleGestureDetected = useCallback(
     (data) => {
@@ -826,6 +956,13 @@ export default function RoomView({
     );
     downloadMeetingTranscript(roomId, allLogs, chatMessages);
   }, [transcriptLogs, speechLogs, roomId, chatMessages]);
+
+  const handleSendChatMessage = useCallback(
+    (text) => {
+      sendChatMessage(text, userName || 'You');
+    },
+    [sendChatMessage, userName]
+  );
 
   // Compute candidate signer: prioritize recent gesture sender, fallback to whoever has AI Vision ON
   const activeAiVisionPeerId = Object.keys(peerMediaStatus).find(
@@ -907,6 +1044,7 @@ export default function RoomView({
           userRole={userRole}
           isMuted={isMuted}
           isCameraOff={isCameraOff}
+          isScreenSharing={isScreenSharing}
           speechCaptions={combinedSpeechCaptions}
           currentSentence={currentSentence}
           liveTokens={liveTokens}
@@ -922,6 +1060,8 @@ export default function RoomView({
           onLeaveRoom={handleRequestLeave}
           onToggleMic={toggleMic}
           onToggleCamera={toggleCamera}
+          onToggleCaptions={handleToggleCaptions}
+          onToggleScreenShare={toggleScreenShare}
         />
       ) : (
         <div className="w-screen h-screen max-h-screen bg-[#121212] text-white flex flex-col justify-between font-sans select-none overflow-hidden">
@@ -1104,7 +1244,7 @@ export default function RoomView({
                 isOpen={isChatOpen}
                 onClose={() => setIsChatOpen(false)}
                 messages={chatMessages}
-                onSendMessage={sendChatMessage}
+                onSendMessage={handleSendChatMessage}
                 currentSocketId={socketId}
               />
             )}
@@ -1143,6 +1283,7 @@ export default function RoomView({
           captionMode={captionMode}
           isSttEnabled={isCaptionsEnabled && captionMode === 'STT'}
           sttStatus={sttStatus}
+          isSignLanguageEnabled={userRole === ROLES.SIGNER}
           onToggleMic={toggleMic}
           onToggleCamera={toggleCamera}
           onToggleScreenShare={toggleScreenShare}
@@ -1150,22 +1291,13 @@ export default function RoomView({
           onToggleHandTracking={handleRequestHandTracking}
           onToggleStt={handleToggleCaptions}
           onToggleCaptions={handleToggleCaptions}
-          onRequestSwitchRole={() => setIsRoleModalOpen(true)}
+          onToggleSignLanguageSupport={handleToggleSignLanguageSupport}
           onToggleChat={handleToggleChat}
           onTogglePeople={handleTogglePeople}
           onResetPin={handleResetPin}
           onLeaveRoom={handleRequestLeave}
         />
       </div>
-
-      {/* In-Room Role Switch Modal */}
-      <RolePromptModal
-        isOpen={isRoleModalOpen}
-        currentRole={userRole}
-        dismissible={true}
-        onSelectRole={handleChangeRole}
-        onClose={() => setIsRoleModalOpen(false)}
-      />
         </div>
       )}
 
@@ -1183,6 +1315,7 @@ export default function RoomView({
         isOpen={confirmModalConfig.isOpen}
         title={confirmModalConfig.title}
         description={confirmModalConfig.description}
+        infoPill={confirmModalConfig.infoPill}
         actions={confirmModalConfig.actions}
         onClose={() => setConfirmModalConfig((prev) => ({ ...prev, isOpen: false }))}
       />

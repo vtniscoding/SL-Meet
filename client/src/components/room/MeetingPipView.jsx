@@ -6,6 +6,8 @@ import {
   CameraOffIcon as VideoOff,
   EndCallIcon as PhoneOff,
   ExpandPipIcon as Maximize2,
+  CaptionsIcon as Captions,
+  ScreenShareIcon as Monitor,
   UserAvatarIcon as User,
 } from '../../icons';
 import { ROLES } from '../../constants/roles';
@@ -28,6 +30,7 @@ export default function MeetingPipView({
   userRole,
   isMuted,
   isCameraOff,
+  isScreenSharing = false,
   speechCaptions = {},
   currentSentence = '',
   liveTokens = [],
@@ -43,6 +46,8 @@ export default function MeetingPipView({
   onLeaveRoom,
   onToggleMic,
   onToggleCamera,
+  onToggleCaptions,
+  onToggleScreenShare,
 }) {
   const videoRef = useRef(null);
 
@@ -109,6 +114,7 @@ export default function MeetingPipView({
   const isLocal = p?.isLocal;
   const stream = p?.stream || (isLocal ? localStream : null);
   const isTileCameraOff = p ? p.isCameraOff : isCameraOff;
+  const isTileMuted = isLocal ? isMuted : (p ? p.isMuted : false);
   const hasVideo =
     stream &&
     stream.getVideoTracks().some((t) => t.enabled && t.readyState === 'live') &&
@@ -177,9 +183,16 @@ export default function MeetingPipView({
           </div>
         )}
 
-        {/* Video Bottom-Left Participant Name Badge */}
-        <div className="absolute bottom-1.5 left-2 z-10 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-xs text-[10px] font-medium text-white max-w-[180px] truncate select-none border border-white/5">
-          {p?.name || 'Participant'}
+        {/* Video Bottom-Left Participant Name Badge with Mic Status */}
+        <div className="absolute bottom-1.5 left-2 z-10 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-xs text-[10px] font-medium text-white max-w-[180px] flex items-center space-x-1.5 select-none border border-white/5">
+          <span className="truncate">{p?.name || 'Participant'}</span>
+          {!p?.isScreenSharing && (
+            isTileMuted ? (
+              <MicOff className="w-3 h-3 text-rose-500 shrink-0" title="Microphone off" />
+            ) : (
+              <Mic className="w-3 h-3 text-[#22C55E] shrink-0" title="Microphone on" />
+            )
+          )}
         </div>
       </div>
 
@@ -209,7 +222,7 @@ export default function MeetingPipView({
 
       {/* 4. Bottom Controls Bar */}
       <div
-        className="h-10 shrink-0 px-2 flex items-center justify-center space-x-3 select-none bg-[#121212]"
+        className="h-10 shrink-0 px-2 flex items-center justify-center space-x-2.5 select-none bg-[#121212]"
         style={{ WebkitAppRegion: 'no-drag' }}
       >
         {/* Mic Toggle */}
@@ -234,13 +247,30 @@ export default function MeetingPipView({
           {isCameraOff ? <VideoOff className="w-3.5 h-3.5" /> : <Video className="w-3.5 h-3.5" />}
         </button>
 
-        {/* Show Full Meeting Window Button */}
+        {/* Screen Share Toggle */}
         <button
-          onClick={onExitPiP}
-          className="w-7 h-7 rounded-full bg-[#3C4043] hover:bg-[#474B4F] text-white flex items-center justify-center transition-colors cursor-pointer outline-none"
-          title="Show full meeting window"
+          onClick={onToggleScreenShare}
+          className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors cursor-pointer outline-none ${
+            isScreenSharing
+              ? 'bg-[#8AB4F8] text-[#202124]'
+              : 'bg-[#3C4043] hover:bg-[#474B4F] text-white'
+          }`}
+          title={isScreenSharing ? 'Stop presenting' : 'Present now'}
         >
-          <Maximize2 className="w-3.5 h-3.5" />
+          <Monitor className="w-3.5 h-3.5" />
+        </button>
+
+        {/* Captions (CC) Toggle */}
+        <button
+          onClick={onToggleCaptions}
+          className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors cursor-pointer outline-none ${
+            isCcActive
+              ? 'bg-[#8AB4F8] text-[#202124]'
+              : 'bg-[#3C4043] hover:bg-[#474B4F] text-white'
+          }`}
+          title={isCcActive ? 'Turn off captions' : 'Turn on captions'}
+        >
+          <Captions className="w-3.5 h-3.5" />
         </button>
 
         {/* Leave / End Call */}

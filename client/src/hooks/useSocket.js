@@ -1,11 +1,23 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { getSocket, connectSocket, disconnectSocket, SOCKET_URL } from '../services/socket';
 import { fetchDatasetFromServer } from '../services/gestureClassifier';
 
 export function useSocket(initialServerUrl = SOCKET_URL) {
   const [serverUrl, setServerUrl] = useState(initialServerUrl);
-  const [isConnected, setIsConnected] = useState(false);
-  const [socketId, setSocketId] = useState(null);
+  const [isConnected, setIsConnected] = useState(() => {
+    try {
+      return getSocket(initialServerUrl).connected;
+    } catch {
+      return false;
+    }
+  });
+  const [socketId, setSocketId] = useState(() => {
+    try {
+      return getSocket(initialServerUrl).id || null;
+    } catch {
+      return null;
+    }
+  });
   const [currentRoom, setCurrentRoom] = useState('');
   const [logs, setLogs] = useState([]);
   const [remoteGestures, setRemoteGestures] = useState([]);
@@ -17,6 +29,21 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
   const [peerMediaStatus, setPeerMediaStatus] = useState({});
   const [speechCaptions, setSpeechCaptions] = useState({});
 
+  const currentRoomRef = useRef('');
+  const currentUserMetaRef = useRef(null);
+  const roomUsersRef = useRef([]);
+
+  useEffect(() => {
+    roomUsersRef.current = roomUsers;
+  }, [roomUsers]);
+
+  const cacheChatMessages = useCallback((roomId, messages) => {
+    if (!roomId || !Array.isArray(messages)) return;
+    try {
+      localStorage.setItem(`sl_meet_chat_${roomId}`, JSON.stringify(messages.slice(-150)));
+    } catch {}
+  }, []);
+
   const addLog = useCallback((message, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
     setLogs((prev) => [{ id: Math.random().toString(36).substr(2, 9), timestamp, message, type }, ...prev.slice(0, 49)]);
@@ -25,18 +52,33 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
   useEffect(() => {
     const socket = getSocket(serverUrl);
 
+    // Sync immediate connection state if socket is already connected
+    if (socket.connected) {
+      setIsConnected(true);
+      setSocketId(socket.id);
+    }
+
     const onConnect = () => {
       setIsConnected(true);
       setSocketId(socket.id);
-      addLog(`Connected to Render socket service (${socket.id})`, 'success');
+      addLog(`Connected to socket service (${socket.id})`, 'success');
+
+      // Auto-rejoin active room if connection was dropped and restored
+      if (currentRoomRef.current && currentUserMetaRef.current) {
+        socket.emit('join_room', {
+          roomId: currentRoomRef.current,
+          userMeta: currentUserMetaRef.current,
+        });
+        addLog(`Reconnected & restored room session: ${currentRoomRef.current}`, 'info');
+      }
     };
 
     const onDisconnect = (reason) => {
       setIsConnected(false);
       setSocketId(null);
+      // DO NOT clear chatMessages on disconnect! Chat messages belong to the room session.
       setRoomUsers([]);
       setPresentingUsers({});
-      setChatMessages([]);
       setPeerMediaStatus({});
       setSpeechCaptions({});
       setHostId(null);
@@ -94,6 +136,19 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
       if (data.hostId) {
         setHostId(data.hostId);
       }
+      if (data.messages && Array.isArray(data.messages)) {
+        setChatMessages((prev) => {
+          const existingIds = new Set(prev.map((m) => m.id));
+          const newMsgs = data.messages.filter(
+            (m) => m && m.text !== '__SL_MEET_ROOM_ENDED_SIGNAL__' && !existingIds.has(m.id)
+          );
+          if (newMsgs.length === 0) return prev;
+          const merged = [...prev, ...newMsgs];
+          merged.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+          cacheChatMessages(currentRoomRef.current, merged);
+          return merged;
+        });
+      }
       
       const presentingMap = {};
       const mediaMap = {};
@@ -145,17 +200,21 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
           },
         ];
       });
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          id: `sys-join-${data.userId}-${Date.now()}`,
-          senderId: 'system',
-          senderName: 'System',
-          text: `${userName} joined the room`,
-          timestamp: Date.now(),
-          type: 'system',
-        },
-      ]);
+      setChatMessages((prev) => {
+        const next = [
+          ...prev,
+          {
+            id: `sys-join-${data.userId}-${Date.now()}`,
+            senderId: 'system',
+            senderName: 'System',
+            text: `${userName} joined the room`,
+            timestamp: Date.now(),
+            type: 'system',
+          },
+        ];
+        cacheChatMessages(currentRoomRef.current, next);
+        return next;
+      });
     };
 
     const onUserLeft = (data) => {
@@ -180,17 +239,21 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
         delete next[data.userId];
         return next;
       });
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          id: `sys-left-${data.userId}-${Date.now()}`,
-          senderId: 'system',
-          senderName: 'System',
-          text: `Participant ${shortId} left the room`,
-          timestamp: Date.now(),
-          type: 'system',
-        },
-      ]);
+      setChatMessages((prev) => {
+        const next = [
+          ...prev,
+          {
+            id: `sys-left-${data.userId}-${Date.now()}`,
+            senderId: 'system',
+            senderName: 'System',
+            text: `Participant ${shortId} left the room`,
+            timestamp: Date.now(),
+            type: 'system',
+          },
+        ];
+        cacheChatMessages(currentRoomRef.current, next);
+        return next;
+      });
     };
 
     const onPeerPresenting = (data) => {
@@ -217,7 +280,40 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
     };
 
     const onChatMessage = (messageData) => {
-      setChatMessages((prev) => [...prev, messageData]);
+      if (!messageData || !messageData.text) return;
+      if (messageData.text === '__SL_MEET_ROOM_ENDED_SIGNAL__') {
+        addLog('Meeting ended by host for everyone', 'error');
+        window.dispatchEvent(new CustomEvent('sl_meet_room_ended', { detail: messageData }));
+        window.dispatchEvent(new CustomEvent('sl_meet_kicked_from_room'));
+        return;
+      }
+      setChatMessages((prev) => {
+        // 1. Exact ID match deduplication
+        if (prev.some((m) => m.id === messageData.id)) return prev;
+
+        // 2. Authoritative echo match: If server echoes back our own message with a generated/different ID
+        const matchIdx = prev.findIndex(
+          (m) =>
+            (m.senderId === 'local' || m.senderId === socket.id || m.senderName === 'You') &&
+            m.text === messageData.text &&
+            Math.abs((m.timestamp || 0) - (messageData.timestamp || Date.now())) < 15000
+        );
+
+        if (matchIdx !== -1) {
+          // Replace local optimistic message with the authoritative server message
+          const updated = [...prev];
+          updated[matchIdx] = {
+            ...messageData,
+            senderId: messageData.senderId || prev[matchIdx].senderId,
+          };
+          cacheChatMessages(currentRoomRef.current, updated);
+          return updated;
+        }
+
+        const next = [...prev, messageData];
+        cacheChatMessages(currentRoomRef.current, next);
+        return next;
+      });
     };
 
     const onMutePeerRequest = (data) => {
@@ -227,6 +323,12 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
 
     const onKickPeerRequest = (data) => {
       addLog(`Kick request received from host (${data.senderId.slice(0, 5)})`, 'error');
+      window.dispatchEvent(new CustomEvent('sl_meet_kicked_from_room'));
+    };
+
+    const onRoomEnded = (data) => {
+      addLog(`Meeting ended by host for everyone`, 'error');
+      window.dispatchEvent(new CustomEvent('sl_meet_room_ended', { detail: data }));
       window.dispatchEvent(new CustomEvent('sl_meet_kicked_from_room'));
     };
 
@@ -249,9 +351,36 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
     socket.on('chat_message', onChatMessage);
     socket.on('mute_peer_request', onMutePeerRequest);
     socket.on('kick_peer_request', onKickPeerRequest);
+    socket.on('room_ended', onRoomEnded);
     socket.on('dataset_updated', onDatasetUpdated);
 
+    const onStorageChange = (e) => {
+      const activeRoom = currentRoomRef.current;
+      if (activeRoom && e.key === `sl_meet_ended_room_${activeRoom}`) {
+        window.dispatchEvent(new CustomEvent('sl_meet_room_ended'));
+        window.dispatchEvent(new CustomEvent('sl_meet_kicked_from_room'));
+        return;
+      }
+      if (activeRoom && e.key === `sl_meet_chat_${activeRoom}` && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setChatMessages((prev) => {
+              const existingIds = new Set(prev.map((m) => m.id));
+              const newMsgs = parsed.filter((m) => !existingIds.has(m.id));
+              if (newMsgs.length === 0) return prev;
+              const merged = [...prev, ...newMsgs];
+              merged.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+              return merged;
+            });
+          }
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', onStorageChange);
+
     return () => {
+      window.removeEventListener('storage', onStorageChange);
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
       socket.off('connect_error', onConnectError);
@@ -266,6 +395,7 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
       socket.off('chat_message', onChatMessage);
       socket.off('mute_peer_request', onMutePeerRequest);
       socket.off('kick_peer_request', onKickPeerRequest);
+      socket.off('room_ended', onRoomEnded);
       socket.off('dataset_updated', onDatasetUpdated);
     };
   }, [serverUrl, addLog]);
@@ -281,36 +411,82 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
   };
 
   const joinRoom = (roomId, userMeta) => {
+    currentRoomRef.current = roomId;
+    currentUserMetaRef.current = userMeta;
+    setCurrentRoom(roomId);
+
+    // Restore cached room messages if available in local storage
+    try {
+      const cached = localStorage.getItem(`sl_meet_chat_${roomId}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setChatMessages((prev) => {
+            const existingIds = new Set(prev.map((m) => m.id));
+            const newMsgs = parsed.filter((m) => !existingIds.has(m.id));
+            if (newMsgs.length === 0 && prev.length > 0) return prev;
+            const merged = [...prev, ...newMsgs];
+            merged.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+            return merged;
+          });
+        }
+      }
+    } catch {}
+
     const socket = getSocket(serverUrl);
     if (!socket.connected) {
       connectSocket(serverUrl);
     }
     socket.emit('join_room', { roomId, userMeta });
-    setCurrentRoom(roomId);
     addLog(`Joined room: ${roomId}`, 'success');
   };
 
   const leaveRoom = () => {
     const socket = getSocket(serverUrl);
-    if (socket.connected && currentRoom) {
-      socket.emit('leave_room', { roomId: currentRoom });
-      addLog(`Left room: ${currentRoom}`, 'warning');
-      setCurrentRoom('');
-      setRoomUsers([]);
-      setPresentingUsers({});
-      setPeerMediaStatus({});
-      setChatMessages([]);
-      setHostId(null);
+    const roomToLeave = currentRoomRef.current || currentRoom;
+    if (socket.connected && roomToLeave) {
+      socket.emit('leave_room', { roomId: roomToLeave });
+      addLog(`Left room: ${roomToLeave}`, 'warning');
     }
+    currentRoomRef.current = '';
+    currentUserMetaRef.current = null;
+    setCurrentRoom('');
+    setRoomUsers([]);
+    setPresentingUsers({});
+    setPeerMediaStatus({});
+    setChatMessages([]);
+    setHostId(null);
   };
 
-  const endRoom = () => {
+  const endRoom = (roomIdOverride) => {
     const socket = getSocket(serverUrl);
-    if (socket.connected && currentRoom) {
-      socket.emit('end_room', { roomId: currentRoom });
-      addLog(`Ended room for everyone: ${currentRoom}`, 'warning');
-      leaveRoom();
+    const roomToEnd = roomIdOverride || currentRoomRef.current || currentRoom;
+    if (socket.connected && roomToEnd) {
+      // 1. Kick every connected participant via existing server `kick_peer` handler
+      const activeUsers = roomUsersRef.current?.length ? roomUsersRef.current : roomUsers;
+      (activeUsers || []).forEach((u) => {
+        if (u && u.userId && u.userId !== socket.id) {
+          socket.emit('kick_peer', { roomId: roomToEnd, targetId: u.userId });
+        }
+      });
+
+      // 2. Broadcast room-ended control signal via room chat channel (guaranteed room-wide delivery on deployed Render server)
+      socket.emit('send_chat_message', {
+        roomId: roomToEnd,
+        text: '__SL_MEET_ROOM_ENDED_SIGNAL__',
+        senderName: 'System',
+      });
+
+      // 3. Emit dedicated `end_room` event for updated server versions
+      socket.emit('end_room', { roomId: roomToEnd });
+      addLog(`Ended room for everyone: ${roomToEnd}`, 'warning');
     }
+    try {
+      if (roomToEnd) {
+        localStorage.setItem(`sl_meet_ended_room_${roomToEnd}`, Date.now().toString());
+        localStorage.removeItem(`sl_meet_chat_${roomToEnd}`);
+      }
+    } catch {}
   };
 
   const sendGesture = (gestureData) => {
@@ -351,12 +527,48 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
   };
 
   const sendChatMessage = (text, senderName = 'You') => {
+    if (!text || text.trim().length === 0) return;
+    const trimmedText = text.trim();
     const socket = getSocket(serverUrl);
-    if (socket.connected && currentRoom && text && text.trim().length > 0) {
+    const targetRoom = currentRoomRef.current || currentRoom;
+    const messageId = `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const effectiveSenderName = senderName || currentUserMetaRef.current?.name || 'You';
+
+    // 1. Optimistic Local Update
+    const localMsg = {
+      id: messageId,
+      senderId: socket?.id || 'local',
+      senderName: effectiveSenderName,
+      text: trimmedText,
+      timestamp: Date.now(),
+      type: 'user',
+    };
+
+    setChatMessages((prev) => {
+      // Prevent rapid-fire duplicate optimistic messages with identical text within 1s
+      const isDuplicate = prev.some(
+        (m) =>
+          m.id === messageId ||
+          ((m.senderId === 'local' || m.senderId === socket?.id || m.senderName === effectiveSenderName) &&
+            m.text === trimmedText &&
+            Date.now() - (m.timestamp || 0) < 1000)
+      );
+      if (isDuplicate) return prev;
+      const next = [...prev, localMsg];
+      if (targetRoom) cacheChatMessages(targetRoom, next);
+      return next;
+    });
+
+    // 2. Ensure connection & transmit via socket
+    if (!socket.connected) {
+      connectSocket(serverUrl);
+    }
+    if (targetRoom) {
       socket.emit('send_chat_message', {
-        roomId: currentRoom,
-        text: text.trim(),
-        senderName,
+        id: messageId,
+        roomId: targetRoom,
+        text: trimmedText,
+        senderName: effectiveSenderName,
       });
     }
   };

@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -25,8 +27,7 @@
 
 /* Accessibility focus indicator for Caption UI controls */
 [data-caption-ui] :focus-visible,
-aside[aria-label="Caption History"] :focus-visible,
-.focus-ring:focus-visible {
+aside[aria-label="Caption History"] :focus-visible {
   outline: 2px solid #8AB4F8 !important;
   outline-offset: 2px !important;
 }
@@ -72,4 +73,24 @@ aside[aria-label="Caption History"] :focus-visible,
 
 .glow-cyan {
   box-shadow: 0 0 25px -5px rgba(6, 182, 212, 0.4);
+}
+
+/* Infinite Marquee Animation for Logo Carousel */
+@keyframes marquee-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee-infinite {
+  display: flex;
+  width: max-content;
+  animation: marquee-scroll 28s linear infinite;
+}
+
+.animate-marquee-infinite:hover {
+  animation-play-state: paused;
 }

@@ -19,6 +19,7 @@ export default function MeetingChatDrawer({
 }) {
   const [inputText, setInputText] = useState('');
   const chatBottomRef = useRef(null);
+  const isSendingRef = useRef(false);
 
   // Auto-scroll to latest message
   useEffect(() => {
@@ -29,18 +30,18 @@ export default function MeetingChatDrawer({
 
   const handleSend = (e) => {
     if (e) e.preventDefault();
-    if (!inputText.trim()) return;
+    const text = inputText.trim();
+    if (!text || isSendingRef.current) return;
+
+    isSendingRef.current = true;
     if (onSendMessage) {
-      onSendMessage(inputText.trim());
+      onSendMessage(text);
     }
     setInputText('');
-  };
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
+    setTimeout(() => {
+      isSendingRef.current = false;
+    }, 250);
   };
 
   const formatTime = (ts) => {
@@ -93,7 +94,10 @@ export default function MeetingChatDrawer({
                 );
               }
 
-              const isSelf = msg.senderId === currentSocketId || msg.senderId === 'local';
+              const isSelf =
+                (currentSocketId && msg.senderId === currentSocketId) ||
+                msg.senderId === 'local' ||
+                (msg.senderName === 'You' && msg.type !== 'system');
 
               return (
                 <div
@@ -133,7 +137,6 @@ export default function MeetingChatDrawer({
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={handleKeyDown}
             placeholder="Send a message..."
             className="flex-1 bg-[#3C4043] text-white placeholder-slate-400 text-sm px-4 py-2.5 rounded-full border border-transparent focus:border-blue-500 focus:bg-[#474B4F] outline-none transition-all"
           />

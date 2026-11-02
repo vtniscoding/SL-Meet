@@ -32,6 +32,7 @@ import {
   faClosedCaptioning,
   faPhoneSlash,
   faHands,
+  faUserGroup,
 } from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
 
@@ -281,6 +282,15 @@ export const HandsIcon = ({ className = '', size, style, ...props }) => {
     ...props,
   });
 };
+export const UserGroupIcon = ({ className = '', size, style, ...props }) => {
+  const customStyle = size ? { width: size, height: size, ...style } : style;
+  return React.createElement(FontAwesomeIcon, {
+    icon: faUserGroup,
+    className,
+    style: customStyle,
+    ...props,
+  });
+};
 export const AudioLinesIcon = AudioLines;
 export const MicAudioLinesIcon = AudioLines;
 export const TtFontSizeIcon = ({ className = 'w-5 h-5', size = 20, style, ...props }) => {
@@ -376,9 +386,65 @@ export const SettingsFilledIcon = ({ className = '', size, style, ...props }) =>
 };
 export const SettingsNavIcon = SettingsFilledIcon; // alias for filled sidebar setting
 
+export const MediaPipeLogoIcon = ({ className = 'w-5 h-5', ...props }) =>
+  React.createElement(
+    'svg',
+    { viewBox: '0 0 24 24', className, ...props },
+    React.createElement('path', {
+      fill: '#007F99',
+      d: 'M2.182 0C1 0 .037.94.002 2.114L0 2.182v6.545a2.182 2.182 0 0 0 4.364 0V2.182A2.182 2.182 0 0 0 2.182 0Zm6.545 0c-1.182 0-2.145.94-2.18 2.114l-.002.068v13.09a2.182 2.182 0 0 0 4.364 0V2.183A2.182 2.182 0 0 0 8.727 0Zm6.546 0a2.182 2.182 0 0 0-2.182 2.182 2.182 2.182 0 0 0 2.182 2.182 2.182 2.182 0 0 0 2.182-2.182A2.182 2.182 0 0 0 15.273 0Zm6.545 0c-1.182 0-2.145.94-2.18 2.114l-.002.068v19.636a2.182 2.182 0 0 0 4.364 0V2.182A2.182 2.182 0 0 0 21.818 0Zm-6.545 6.545c-1.183 0-2.145.94-2.181 2.114l-.001.068v13.091a2.182 2.182 0 0 0 4.364 0V8.728a2.182 2.182 0 0 0-2.182-2.183zM2.182 13.091c-1.182 0-2.145.94-2.18 2.114L0 15.273v6.545a2.182 2.182 0 0 0 4.364 0v-6.545a2.182 2.182 0 0 0-2.182-2.182zm6.545 6.545a2.182 2.182 0 0 0-2.182 2.182A2.182 2.182 0 0 0 8.727 24a2.182 2.182 0 0 0 2.182-2.182 2.182 2.182 0 0 0-2.182-2.182Z',
+    })
+  );
+
+export const TensorFlowLogoIcon = ({ className = 'w-5 h-5', ...props }) =>
+  React.createElement(
+    'svg',
+    { viewBox: '0 0 24 24', className, ...props },
+    React.createElement('path', {
+      fill: '#FF6F00',
+      d: 'M1.292 5.856L11.54 0v24l-4.095-2.378V7.603l-6.168 3.568.015-5.315zm21.43 5.331l-4.103-2.382V24l-4.106-2.378V0l8.214 4.751-.005 6.436z',
+    })
+  );
+
+export const ReactLogoIcon = ({ className = 'w-5 h-5', ...props }) =>
+  React.createElement(
+    'svg',
+    { viewBox: '-11.5 -10.23174 23 20.46348', className, ...props },
+    React.createElement('circle', { cx: '0', cy: '0', r: '2.05', fill: '#61DAFB' }),
+    React.createElement(
+      'g',
+      { stroke: '#61DAFB', strokeWidth: '1', fill: 'none' },
+      React.createElement('ellipse', { rx: '11', ry: '4.2' }),
+      React.createElement('ellipse', { rx: '11', ry: '4.2', transform: 'rotate(60)' }),
+      React.createElement('ellipse', { rx: '11', ry: '4.2', transform: 'rotate(120)' })
+    )
+  );
+
+export const GoogleLogoIcon = ({ className = 'w-5 h-5', ...props }) =>
+  React.createElement(
+    'svg',
+    { viewBox: '0 0 24 24', className, ...props },
+    React.createElement('path', {
+      fill: '#4285F4',
+      d: 'M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z',
+    }),
+    React.createElement('path', {
+      fill: '#34A853',
+      d: 'M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z',
+    }),
+    React.createElement('path', {
+      fill: '#FBBC05',
+      d: 'M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.97 0 12s.45 3.82 1.25 5.42l4.03-3.15z',
+    }),
+    React.createElement('path', {
+      fill: '#EA4335',
+      d: 'M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z',
+    })
+  );
+
 export const MoreHorizontalNavIcon = MoreHorizontal;
 export const ChatDrawerIcon = MessageSquare;
-export const ParticipantsDrawerIcon = Users;
+export const ParticipantsDrawerIcon = UserGroupIcon;
 export const CloseIcon = X;
 export const SearchIcon = Search;
 export const SendIcon = Send;
@@ -485,6 +551,7 @@ export const AppIcons = {
   More: MoreHorizontalNavIcon,
   Chat: ChatDrawerIcon,
   Participants: ParticipantsDrawerIcon,
+  UserGroup: UserGroupIcon,
   Close: CloseIcon,
   Search: SearchIcon,
   Send: SendIcon,

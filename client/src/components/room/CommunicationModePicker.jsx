@@ -17,6 +17,7 @@ export default function CommunicationModePicker({
     {
       id: ROLES.SIGNER,
       label: ROLE_META[ROLES.SIGNER]?.label || 'Sign language user',
+      sublabel: '(deaf and hard of hearing)',
     },
     {
       id: ROLES.NON_SIGNER,
@@ -68,9 +69,16 @@ export default function CommunicationModePicker({
               }`}
             >
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-900 tracking-tight">
-                  {mode.label}
-                </span>
+                <div className="flex items-baseline flex-wrap gap-x-1.5 min-w-0 pr-2">
+                  <span className="text-xs font-bold text-slate-900 tracking-tight">
+                    {mode.label}
+                  </span>
+                  {mode.sublabel && (
+                    <span className="text-[11px] font-normal text-slate-500">
+                      {mode.sublabel}
+                    </span>
+                  )}
+                </div>
 
                 {/* Radio Indicator */}
                 <div className="shrink-0">

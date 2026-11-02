@@ -17,14 +17,14 @@ import UserDashboard from './components/dashboard/UserDashboard';
 import AuthModal from './components/auth/AuthModal';
 import ProfileAvatarMenu from './components/common/ProfileAvatarMenu';
 import { useLocalMedia } from './hooks/useLocalMedia';
-import { useSocket } from './hooks/useSocket';
 import { useAuth } from './context/AuthContext';
 import { supabase } from './utils/supabase';
 import { fetchDatasetFromServer, initRealtimeDatasetSync } from './services/gestureClassifier';
 import { preloadMediaPipeHands } from './services/mediapipe';
 import { preloadWhisperModel } from './services/whisperWorkerManager';
-import { brandLogo, homeIllustration } from './assets';
+import { brandLogo, videoAds } from './assets';
 import { saveRoomToHistory } from './hooks/useRoomHistory';
+import InfinityLogoCarousel from './components/home/InfinityLogoCarousel';
 
 export default function App() {
   const [currentView, setCurrentView] = useState('home'); // 'home' | 'dashboard' | 'lobby' | 'room'
@@ -106,51 +106,8 @@ export default function App() {
   const isMediaActive = !isPreloading && (currentView === 'lobby' || currentView === 'room');
   const mediaState = useLocalMedia({ isActive: isMediaActive });
 
-  // Socket connection hook
-  const { isConnected, leaveRoom, toggleConnection } = useSocket();
-
-  // 3D Tilt Hover State for Hero Illustration & Dock Vignetting
-  // 3D Tilt Hover State for Hero Illustration & Dock Vignetting
-  const [tiltStyle, setTiltStyle] = useState({
-    transform: 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)',
-    transition: 'transform 0.5s cubic-bezier(0.03, 0.98, 0.52, 0.99)',
-  });
   const [isHoveringCard, setIsHoveringCard] = useState(false);
-  const [isHoveringIllustration, setIsHoveringIllustration] = useState(false);
 
-  const handleMouseMove = (e) => {
-    setIsHoveringIllustration(true);
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const centerX = rect.width / 2;
-    const centerY = rect.height / 2;
-
-    const rotateX = ((y - centerY) / centerY) * -12;
-    const rotateY = ((x - centerX) / centerX) * 12;
-
-    setTiltStyle({
-      transform: `perspective(1000px) rotateX(${rotateX.toFixed(2)}deg) rotateY(${rotateY.toFixed(2)}deg) scale3d(1.06, 1.06, 1.06)`,
-      transition: 'transform 0.1s ease-out',
-    });
-  };
-
-  const handleMouseLeaveIllustration = () => {
-    setIsHoveringIllustration(false);
-    setTiltStyle({
-      transform: 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)',
-      transition: 'transform 0.6s cubic-bezier(0.03, 0.98, 0.52, 0.99)',
-    });
-  };
-
-  const handleCardMouseLeave = () => {
-    setIsHoveringCard(false);
-    setIsHoveringIllustration(false);
-    setTiltStyle({
-      transform: 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)',
-      transition: 'transform 0.6s cubic-bezier(0.03, 0.98, 0.52, 0.99)',
-    });
-  };
 
   // Create New Meeting (Only authenticated users can create rooms)
   const handleCreateNewMeeting = async () => {
@@ -264,14 +221,10 @@ export default function App() {
       setUserRole(chosenRole);
     }
     setCurrentView('room');
-    if (!isConnected) {
-      toggleConnection();
-    }
   };
 
   const handleLeaveRoom = () => {
     mediaState.stopMedia();
-    leaveRoom();
     setUserRole(null);
     setCurrentView(user ? 'dashboard' : 'home');
     setActiveRoomId('');
@@ -469,11 +422,11 @@ export default function App() {
           </div>
         </aside>
 
-        {/* 3. Main Home Card (Elevated White Card with Vignetting on Hover) */}
+        {/* 3. Main Home Card (Elevated White Card with Full-Bleed Video Ads Dock, Blue Inner Vignette & Logo Carousel) */}
         <div
           onMouseEnter={() => setIsHoveringCard(true)}
-          onMouseLeave={handleCardMouseLeave}
-          className="flex-1 bg-white rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-center p-4 sm:p-6 md:p-8 lg:p-12 overflow-y-auto min-h-0 relative group/card transition-colors duration-500"
+          onMouseLeave={() => setIsHoveringCard(false)}
+          className="flex-1 bg-white rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between p-4 sm:p-6 md:p-8 lg:px-12 lg:pt-10 lg:pb-5 overflow-hidden min-h-0 relative group/card transition-colors duration-500"
         >
           {/* Vignetting Effect: Deep Ocean Blue Inner Shadow & Edge Vignette on Container Hover */}
           <div
@@ -487,21 +440,22 @@ export default function App() {
 
           {/* Main Hero Section */}
           <main className="w-full flex-1 flex flex-col lg:flex-row items-center justify-between gap-6 lg:gap-10 my-auto overflow-y-auto lg:overflow-hidden relative z-10 py-2">
-            {/* Left Column: Title & Buttons */}
-            <div className="w-full lg:w-[44%] xl:w-[42%] shrink-0 space-y-4">
-              {/* Title: Equal font size for both lines */}
-              <h1 className="text-xl sm:text-2xl md:text-[24px] leading-tight tracking-tight">
+            {/* Left Column: Title & Buttons (Shifted slightly right and upward) */}
+            <div className="w-full lg:w-[46%] xl:w-[42%] shrink-0 space-y-4 relative z-10 transform lg:translate-x-6 xl:translate-x-10 -translate-y-4 lg:-translate-y-6">
+              {/* Title: Equal font size for both lines (Open Sans) */}
+              <h1 className="font-opensans text-xl sm:text-2xl md:text-[24px] leading-tight tracking-tight">
                 <span className="font-normal text-slate-900 block xl:whitespace-nowrap">
                   Video calls supporting
                 </span>
-                <span className="font-black text-black block mt-1 xl:whitespace-nowrap">
+                <span className="font-bold text-black block mt-1 xl:whitespace-nowrap">
                   deaf and hard of hearing
                 </span>
               </h1>
 
-              {/* Subtitle: Smaller font size as requested */}
-              <p className="text-xs sm:text-sm text-slate-500 max-w-md leading-relaxed font-normal">
-                Easily connect via real-time video calls that use AI to support sign language interpretation.
+              {/* Subtitle: Smaller font size as requested (Open Sans) */}
+              <p className="font-opensans text-xs sm:text-sm text-slate-500 max-w-md leading-relaxed font-normal">
+                Easily connect via real-time video calls that<br />
+                use AI to support sign language interpretation.
               </p>
 
               {/* Single Highlighted Join a meeting CTA button (No underline, prominent action) */}
@@ -519,35 +473,33 @@ export default function App() {
               </div>
             </div>
 
-            {/* Right Column: Interactive 3D Tilt Hover Hero Illustration with Radial Blur Halo */}
-            <div className="w-full lg:w-[54%] xl:w-[56%] flex justify-center items-center relative lg:-translate-x-6 xl:-translate-x-10">
+            {/* Right Dock: Full-bleed Video Ads with Radial Fade (Hidden on small screens / mobile as requested) */}
+            <div className="hidden lg:flex lg:absolute lg:top-0 lg:bottom-0 lg:right-0 lg:w-[44%] xl:w-[46%] items-center justify-center p-4 lg:p-6 overflow-hidden pointer-events-none select-none z-0">
               <div
-                onMouseEnter={() => setIsHoveringIllustration(true)}
-                onMouseMove={handleMouseMove}
-                onMouseLeave={handleMouseLeaveIllustration}
-                style={tiltStyle}
-                className="group relative cursor-pointer transform-gpu will-change-transform flex items-center justify-center p-6 sm:p-8 md:p-10"
+                className="w-full h-full max-h-[370px] xl:max-h-[400px] max-w-[460px] xl:max-w-[500px] relative flex items-center justify-center -translate-y-4 lg:-translate-y-6"
+                style={{
+                  WebkitMaskImage:
+                    'radial-gradient(ellipse 65% 65% at 50% 50%, rgba(0,0,0,1) 35%, rgba(0,0,0,0.7) 60%, rgba(0,0,0,0) 100%)',
+                  maskImage:
+                    'radial-gradient(ellipse 65% 65% at 50% 50%, rgba(0,0,0,1) 35%, rgba(0,0,0,0.7) 60%, rgba(0,0,0,0) 100%)',
+                }}
               >
-                {/* Radial Blur Glow: Compact, soft light-blue halo positioned slightly lower behind illustration */}
-                <div
-                  aria-hidden="true"
-                  className={`absolute -inset-2 sm:-inset-4 md:-inset-6 translate-y-4 sm:translate-y-6 md:translate-y-8 rounded-full bg-[radial-gradient(ellipse_at_center,rgba(92,160,242,0.45)_0%,rgba(147,197,253,0.3)_40%,transparent_70%)] blur-xl pointer-events-none z-0 transition-all duration-700 ease-out ${
-                    isHoveringIllustration
-                      ? 'opacity-100 scale-105'
-                      : isHoveringCard
-                      ? 'opacity-75 scale-95'
-                      : 'opacity-25 scale-85'
-                  }`}
-                />
-
-                <img
-                  src={homeIllustration}
-                  alt="AI Sign Language Video Calls"
-                  className="w-full max-w-sm sm:max-w-md md:max-w-lg lg:max-w-xl h-auto max-h-[350px] md:max-h-[390px] object-contain filter drop-shadow-lg relative z-10"
+                <video
+                  src={videoAds}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  className="w-full h-full object-cover object-center"
                 />
               </div>
             </div>
           </main>
+
+          {/* Bottom Technology Stack Infinity Logo Carousel */}
+          <div className="w-full pt-2 relative z-10 select-none">
+            <InfinityLogoCarousel />
+          </div>
         </div>
       </div>
 
