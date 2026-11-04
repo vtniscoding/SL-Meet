@@ -9,18 +9,80 @@ const __dirname = path.dirname(__filename);
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 let mainWindow = null;
+let studioWindow = null;
 let handMotionWindow = null;
 let isPipMode = false;
 let prePipBounds = null;
 let prePipWasMaximized = false;
 
+function createStudioWindow(initialHash = '#admin') {
+  if (studioWindow && !studioWindow.isDestroyed()) {
+    studioWindow.focus();
+    return studioWindow;
+  }
+
+  const primaryIcon = app.isPackaged
+    ? path.join(__dirname, '../dist/assets/icons/app-icon.ico')
+    : path.join(__dirname, '../public/assets/icons/app-icon.ico');
+  const fallbackIcon = app.isPackaged
+    ? path.join(__dirname, '../dist/assets/icons/app-icon.png')
+    : path.join(__dirname, '../public/assets/icons/app-icon.png');
+  const iconPath = fs.existsSync(primaryIcon) ? primaryIcon : fallbackIcon;
+
+  studioWindow = new BrowserWindow({
+    width: 1440,
+    height: 900,
+    minWidth: 800,
+    minHeight: 600,
+    icon: iconPath,
+    autoHideMenuBar: true,
+    frame: false,
+    titleBarStyle: 'hidden',
+    backgroundColor: '#131314',
+    title: 'SLMeet - Training and Monitoring',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      webSecurity: true,
+      backgroundThrottling: false,
+    },
+  });
+
+  // Track and notify renderer of studio window maximize / unmaximize state
+  studioWindow.on('maximize', () => {
+    studioWindow?.webContents.send('window-maximized-state', true);
+  });
+  studioWindow.on('unmaximize', () => {
+    studioWindow?.webContents.send('window-maximized-state', false);
+  });
+
+  const hash = initialHash.startsWith('#') ? initialHash : `#${initialHash}`;
+  if (isDev) {
+    studioWindow.loadURL(`http://localhost:5174/${hash}`);
+  } else {
+    const adminDist = path.join(__dirname, '../../admin/dist/index.html');
+    if (fs.existsSync(adminDist)) {
+      studioWindow.loadFile(adminDist, { hash: hash.replace('#', '') });
+    } else {
+      studioWindow.loadFile(path.join(__dirname, '../dist/index.html'), { hash: hash.replace('#', '') });
+    }
+  }
+
+  studioWindow.on('closed', () => {
+    studioWindow = null;
+  });
+
+  return studioWindow;
+}
+
 function createWindow() {
   const primaryIcon = app.isPackaged
-    ? path.join(__dirname, '../dist/assets/icon.ico')
-    : path.join(__dirname, '../public/assets/icon.ico');
+    ? path.join(__dirname, '../dist/assets/icons/app-icon.ico')
+    : path.join(__dirname, '../public/assets/icons/app-icon.ico');
   const fallbackIcon = app.isPackaged
-    ? path.join(__dirname, '../dist/assets/app-icon.png')
-    : path.join(__dirname, '../public/assets/app-icon.png');
+    ? path.join(__dirname, '../dist/assets/icons/app-icon.png')
+    : path.join(__dirname, '../public/assets/icons/app-icon.png');
   const iconPath = fs.existsSync(primaryIcon) ? primaryIcon : fallbackIcon;
 
   mainWindow = new BrowserWindow({
@@ -34,7 +96,7 @@ function createWindow() {
     titleBarStyle: 'hidden',
     backgroundColor: '#F2F4F7',
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,
@@ -44,10 +106,14 @@ function createWindow() {
 
   // Track and notify renderer of window maximize / unmaximize state
   mainWindow.on('maximize', () => {
-    mainWindow?.webContents.send('window-maximized-state', true);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('window-maximized-state', true);
+    }
   });
   mainWindow.on('unmaximize', () => {
-    mainWindow?.webContents.send('window-maximized-state', false);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('window-maximized-state', false);
+    }
   });
 
   // Allow same-origin detached OS companion window for 2-Hand Motion Tracking
@@ -168,31 +234,41 @@ app.on('window-all-closed', () => {
 // IPC Handler for System / Desktop integrations
 ipcMain.handle('app-version', () => app.getVersion());
 
-// Frameless Window Control IPC Listeners
-ipcMain.on('window-minimize', () => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.minimize();
+// Open dedicated Model Training Studio window (admin app)
+ipcMain.handle('open-training-monitor', (_event, hash = '#admin') => {
+  createStudioWindow(hash);
+  return true;
+});
+
+// Native Window Controls IPC Handlers
+ipcMain.on('window-minimize', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+  if (win && !win.isDestroyed()) {
+    win.minimize();
   }
 });
 
-ipcMain.on('window-maximize-toggle', () => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    if (mainWindow.isMaximized()) {
-      mainWindow.unmaximize();
+ipcMain.on('window-maximize-toggle', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+  if (win && !win.isDestroyed()) {
+    if (win.isMaximized()) {
+      win.unmaximize();
     } else {
-      mainWindow.maximize();
+      win.maximize();
     }
   }
 });
 
-ipcMain.on('window-close', () => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.close();
+ipcMain.on('window-close', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+  if (win && !win.isDestroyed()) {
+    win.close();
   }
 });
 
-ipcMain.handle('window-is-maximized', () => {
-  return mainWindow && !mainWindow.isDestroyed() ? mainWindow.isMaximized() : false;
+ipcMain.handle('window-is-maximized', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+  return win && !win.isDestroyed() ? win.isMaximized() : false;
 });
 
 // Picture-in-Picture (PiP) Window IPC Handlers

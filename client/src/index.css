@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap');
+@import './assets/fonts/fonts.css';
 
 @tailwind base;
 @tailwind components;
@@ -88,9 +88,10 @@ aside[aria-label="Caption History"] :focus-visible {
 .animate-marquee-infinite {
   display: flex;
   width: max-content;
-  animation: marquee-scroll 28s linear infinite;
+  animation: marquee-scroll 48s linear infinite;
 }
 
 .animate-marquee-infinite:hover {
   animation-play-state: paused;
 }
+

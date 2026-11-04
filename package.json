@@ -5,20 +5,28 @@
   "description": "SLMeet: Real-time Sign Language & AI-powered Meeting App using Electron, React, Vite, Tailwind CSS, MediaPipe, and Render Socket Service",
   "workspaces": [
     "client",
-    "server"
+    "server",
+    "admin",
+    "packages/*"
   ],
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm --prefix client run electron:dev\"",
-    "admin": "concurrently \"npm run dev:server\" \"npm --prefix client run dev\"",
+    "admin": "concurrently \"npm run dev:server\" \"npm --prefix admin run electron:dev\"",
     "client": "npm --prefix client run electron:dev",
     "dev:client": "npm --prefix client run dev",
+    "dev:admin": "npm --prefix admin run dev",
     "dev:electron": "npm --prefix client run electron:dev",
     "dev:server": "npm --prefix server run dev",
     "build:client": "npm --prefix client run build",
+    "build:admin": "npm --prefix admin run build",
     "build:server": "npm --prefix server run build",
     "start:server": "npm --prefix server start",
     "dist": "npm --prefix client run electron:build",
-    "pack": "npm --prefix client run electron:pack"
+    "pack": "npm --prefix client run electron:pack",
+    "test": "npm --prefix client test && npm --prefix server test && npm --prefix packages/shared test",
+    "test:client": "npm --prefix client test",
+    "test:server": "npm --prefix server test",
+    "test:shared": "npm --prefix packages/shared test"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

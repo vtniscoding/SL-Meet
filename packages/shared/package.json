@@ -1,0 +1,38 @@
+{
+  "name": "@sl-meet/shared",
+  "version": "1.0.0",
+  "description": "Shared code, design tokens, icons, and services for SL-Meet monorepo",
+  "main": "src/index.js",
+  "module": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/**/*.test.mjs"
+  },
+  "exports": {
+    ".": "./src/index.js",
+    "./types": "./src/types/types.js",
+    "./constants": "./src/constants/roles.js",
+    "./theme": "./src/theme/colors.js",
+    "./theme/colors": "./src/theme/colors.js",
+    "./icons": "./src/icons/icons.js",
+    "./utils": "./src/utils/sampleDescriptor.js",
+    "./api": "./src/api/client.js",
+    "./services": "./src/services/mediapipe.js",
+    "./components": "./src/components/TitleBar.jsx",
+    "./ipc": "./src/ipc/windowControl.js",
+    "./ipc/channels": "./src/ipc/channels.js",
+    "./ipc/windowControl": "./src/ipc/windowControl.js"
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-svg-core": "^7.3.1",
+    "@fortawesome/free-solid-svg-icons": "^7.3.1",
+    "@fortawesome/react-fontawesome": "^3.5.0",
+    "@mediapipe/drawing_utils": "^0.3.1675466124",
+    "@mediapipe/hands": "^0.4.1675469240",
+    "@supabase/supabase-js": "^2.117.3",
+    "lucide-react": "^0.344.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "socket.io-client": "^4.7.5"
+  }
+}

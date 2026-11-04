@@ -8,7 +8,11 @@ export default defineConfig({
   base: './',
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
+      '@': path.resolve(__dirname, './src'),
+      '@sl-meet/shared/icons': path.resolve(__dirname, '../packages/shared/src/icons/icons.js'),
+      '@sl-meet/shared/constants': path.resolve(__dirname, '../packages/shared/src/constants/roles.js'),
+      '@sl-meet/shared/theme': path.resolve(__dirname, '../packages/shared/src/theme/colors.js'),
+      '@sl-meet/shared': path.resolve(__dirname, '../packages/shared/src/index.js')
     }
   },
   worker: {
@@ -24,6 +28,6 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    target: 'esnext'
+    target: 'esnext',
   }
 });

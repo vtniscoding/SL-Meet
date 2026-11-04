@@ -9,6 +9,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "node --test tests/**/*.test.mjs",
     "electron:dev": "concurrently \"vite\" \"wait-on tcp:5173 && electron .\"",
     "electron:build": "vite build && electron-builder",
     "electron:pack": "vite build && electron-builder --dir"
@@ -35,7 +36,7 @@
           ]
         }
       ],
-      "icon": "public/assets/icon.ico"
+      "icon": "public/assets/icons/app-icon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -49,33 +50,31 @@
     }
   },
   "dependencies": {
+    "@sl-meet/shared": "*",
     "@fortawesome/fontawesome-svg-core": "^7.3.1",
     "@fortawesome/free-solid-svg-icons": "^7.3.1",
     "@fortawesome/react-fontawesome": "^3.5.0",
     "@huggingface/transformers": "^4.3.1",
-    "@mediapipe/camera_utils": "^0.3.1675466862",
     "@mediapipe/drawing_utils": "^0.3.1675466124",
     "@mediapipe/hands": "^0.4.1675469240",
-    "@mediapipe/tasks-vision": "^1.1.0",
     "@ricky0123/vad-web": "^0.0.31",
     "@supabase/supabase-js": "^2.117.3",
-    "framer-motion": "^14.0.0",
     "lucide-react": "^0.344.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "socket.io-client": "^4.7.5"
   },
   "devDependencies": {
-    "@types/react": "^18.2.66",
-    "@types/react-dom": "^18.2.22",
-    "@vitejs/plugin-react": "^4.2.1",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.19",
     "cross-env": "^7.0.3",
-    "electron": "29.4.6",
+    "electron": "^29.4.6",
     "electron-builder": "^24.13.3",
     "postcss": "^8.4.38",
-    "tailwindcss": "^3.4.1",
-    "vite": "^5.1.6",
+    "tailwindcss": "^3.4.4",
+    "vite": "^5.4.21",
     "wait-on": "^7.2.0"
   }
 }

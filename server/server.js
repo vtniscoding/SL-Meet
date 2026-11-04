@@ -5,27 +5,47 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const DATASET_PATH = path.join(__dirname, 'data', 'asl_dataset.json');
-const ADMIN_SECRET = process.env.ADMIN_SECRET || 'sl_meet_admin_secret_2026';
+const DATASET_PATH = path.join(__dirname, 'data', 'dataset.json');
+
+const ADMIN_SECRET = process.env.ADMIN_SECRET;
+if (!ADMIN_SECRET) {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('[FATAL] Missing ADMIN_SECRET in production environment! Server halting for security.');
+    process.exit(1);
+  } else {
+    console.warn('[WARN] ADMIN_SECRET not set in .env. Falling back to default local dev secret.');
+  }
+}
+const EFFECTIVE_ADMIN_SECRET = ADMIN_SECRET || 'sl_meet_admin_secret_2026';
 
 const PORT = process.env.PORT || 4000;
-const CLIENT_URL = process.env.CLIENT_URL || '*';
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map((s) => s.trim())
+  : '*';
+
+if (process.env.NODE_ENV === 'production' && allowedOrigins === '*') {
+  console.warn('[SECURITY WARNING] ALLOWED_ORIGINS is set to wildcard "*" in production!');
+}
 
 const app = express();
-app.use(cors({ origin: '*' }));
+app.use(cors({ origin: allowedOrigins }));
 app.use(express.json({ limit: '10mb' }));
 
-// Helper to read server dataset safely
-function readDataset() {
+// In-Memory Cached Async Dataset I/O
+let cachedDataset = null;
+
+async function readDataset() {
+  if (cachedDataset) return cachedDataset;
   try {
     if (fs.existsSync(DATASET_PATH)) {
-      const raw = fs.readFileSync(DATASET_PATH, 'utf8');
+      const raw = await fs.promises.readFile(DATASET_PATH, 'utf8');
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.gestures)) {
         parsed.gestures.forEach((g, idx) => {
@@ -34,27 +54,22 @@ function readDataset() {
           }
         });
       }
-      return parsed;
+      cachedDataset = parsed;
+      return cachedDataset;
     }
   } catch (err) {
     console.error('[Server Dataset] Failed to read dataset:', err);
   }
-  return { gestures: [] };
+  cachedDataset = { gestures: [] };
+  return cachedDataset;
 }
 
-// Helper to write server dataset safely
-function writeDataset(data) {
+async function writeDataset(data) {
   try {
     const dir = path.dirname(DATASET_PATH);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(DATASET_PATH, JSON.stringify(data, null, 2), 'utf8');
-
-    // Also sync to client src dataset if running in local environment
-    const clientDatasetPath = path.join(__dirname, '..', 'client', 'src', 'data', 'asl_dataset.json');
-    if (fs.existsSync(path.dirname(clientDatasetPath))) {
-      fs.writeFileSync(clientDatasetPath, JSON.stringify(data, null, 2), 'utf8');
-    }
-
+    if (!fs.existsSync(dir)) await fs.promises.mkdir(dir, { recursive: true });
+    await fs.promises.writeFile(DATASET_PATH, JSON.stringify(data, null, 2), 'utf8');
+    cachedDataset = data;
     return true;
   } catch (err) {
     console.error('[Server Dataset] Failed to write dataset:', err);
@@ -62,13 +77,20 @@ function writeDataset(data) {
   }
 }
 
-// Admin Protection Middleware
+// Admin Protection Middleware (Header-Only, Timing-Safe Comparison)
 function requireAdminAuth(req, res, next) {
-  const adminKey = req.headers['x-admin-key'] || req.query.adminKey || req.body.adminKey;
-  if (adminKey === ADMIN_SECRET) {
+  const adminKey = req.headers['x-admin-key'];
+  if (typeof adminKey !== 'string') {
+    return res.status(403).json({ success: false, message: 'Unauthorized Admin Access. Missing x-admin-key header.' });
+  }
+
+  const keyBuf = Buffer.from(adminKey);
+  const secretBuf = Buffer.from(EFFECTIVE_ADMIN_SECRET);
+
+  if (keyBuf.length === secretBuf.length && crypto.timingSafeEqual(keyBuf, secretBuf)) {
     return next();
   }
-  return res.status(403).json({ success: false, message: 'Unauthorized Admin Access.' });
+  return res.status(403).json({ success: false, message: 'Unauthorized Admin Access. Invalid secret key.' });
 }
 
 // Render Health Check Endpoint
@@ -86,8 +108,8 @@ app.get('/health', (req, res) => {
 });
 
 // PUBLIC API: Client fetches active ASL Dataset
-app.get('/api/gestures/dataset', (req, res) => {
-  const dataset = readDataset();
+app.get('/api/gestures/dataset', async (req, res) => {
+  const dataset = await readDataset();
   res.json({ success: true, dataset });
 });
 
@@ -97,13 +119,13 @@ app.post('/api/admin/verify', requireAdminAuth, (req, res) => {
 });
 
 // ADMIN API: Import / Replace entire dataset JSON from Kaggle/Colab
-app.post('/api/gestures/dataset', requireAdminAuth, (req, res) => {
+app.post('/api/gestures/dataset', requireAdminAuth, async (req, res) => {
   const { dataset } = req.body;
   if (dataset && Array.isArray(dataset.gestures)) {
     dataset.gestures.forEach((g, idx) => {
       if (!g.id) g.id = `sample_${idx + 1}`;
     });
-    writeDataset(dataset);
+    await writeDataset(dataset);
     if (io) io.emit('dataset_updated', { count: dataset.gestures.length });
     return res.json({ success: true, count: dataset.gestures.length });
   }
@@ -111,21 +133,21 @@ app.post('/api/gestures/dataset', requireAdminAuth, (req, res) => {
 });
 
 // ADMIN API: Force Deploy Dataset (Broadcasts to all clients to refetch dataset)
-app.post('/api/admin/deploy', requireAdminAuth, (req, res) => {
-  const dataset = readDataset();
+app.post('/api/admin/deploy', requireAdminAuth, async (req, res) => {
+  const dataset = await readDataset();
   const count = dataset?.gestures?.length || 0;
   if (io) io.emit('dataset_updated', { count });
   res.json({ success: true, message: 'Dataset deployed to all connected clients.', count });
 });
 
 // ADMIN API: Save / Append new sample variation recorded via camera
-app.post('/api/gestures/sample', requireAdminAuth, (req, res) => {
+app.post('/api/gestures/sample', requireAdminAuth, async (req, res) => {
   const { name, vector, type, description, id } = req.body;
   if (!name || !vector || !Array.isArray(vector)) {
     return res.status(400).json({ success: false, message: 'Missing gesture name or feature vector.' });
   }
 
-  const dataset = readDataset();
+  const dataset = await readDataset();
   if (!dataset.gestures) dataset.gestures = [];
 
   const sampleId = id || `sample_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -146,16 +168,16 @@ app.post('/api/gestures/sample', requireAdminAuth, (req, res) => {
     dataset.gestures.push(newSample);
   }
 
-  writeDataset(dataset);
+  await writeDataset(dataset);
   if (io) io.emit('dataset_updated', { count: dataset.gestures.length, updatedGesture: name.trim() });
   res.json({ success: true, count: dataset.gestures.length, gesture: newSample });
 });
 
 // ADMIN API: Edit sample details (name label, description)
-app.put('/api/gestures/sample/:id', requireAdminAuth, (req, res) => {
+app.put('/api/gestures/sample/:id', requireAdminAuth, async (req, res) => {
   const { id } = req.params;
   const { name, description } = req.body;
-  const dataset = readDataset();
+  const dataset = await readDataset();
 
   if (!dataset.gestures) return res.status(404).json({ success: false, message: 'Dataset empty.' });
 
@@ -165,20 +187,20 @@ app.put('/api/gestures/sample/:id', requireAdminAuth, (req, res) => {
   if (name) dataset.gestures[idx].name = name.trim();
   if (description) dataset.gestures[idx].description = description.trim();
 
-  writeDataset(dataset);
+  await writeDataset(dataset);
   if (io) io.emit('dataset_updated', { count: dataset.gestures.length });
   res.json({ success: true, gesture: dataset.gestures[idx] });
 });
 
 // ADMIN API: Delete single sample variation by ID
-app.delete('/api/gestures/sample/:id', requireAdminAuth, (req, res) => {
+app.delete('/api/gestures/sample/:id', requireAdminAuth, async (req, res) => {
   const { id } = req.params;
-  const dataset = readDataset();
+  const dataset = await readDataset();
   if (dataset.gestures) {
     const initialCount = dataset.gestures.length;
     dataset.gestures = dataset.gestures.filter((g) => g.id !== id && g.name.toLowerCase() !== id.toLowerCase());
     if (dataset.gestures.length < initialCount) {
-      writeDataset(dataset);
+      await writeDataset(dataset);
       if (io) io.emit('dataset_updated', { count: dataset.gestures.length });
       return res.json({ success: true, count: dataset.gestures.length });
     }
@@ -187,15 +209,15 @@ app.delete('/api/gestures/sample/:id', requireAdminAuth, (req, res) => {
 });
 
 // ADMIN API: Delete all sample variations for a specific gesture label name
-app.delete('/api/gestures/label/:name', requireAdminAuth, (req, res) => {
+app.delete('/api/gestures/label/:name', requireAdminAuth, async (req, res) => {
   const { name } = req.params;
-  const dataset = readDataset();
+  const dataset = await readDataset();
   if (dataset.gestures) {
     const initialCount = dataset.gestures.length;
     const labelLower = decodeURIComponent(name).toLowerCase();
     dataset.gestures = dataset.gestures.filter((g) => g.name.toLowerCase() !== labelLower);
     if (dataset.gestures.length < initialCount) {
-      writeDataset(dataset);
+      await writeDataset(dataset);
       if (io) io.emit('dataset_updated', { count: dataset.gestures.length });
       return res.json({ success: true, count: dataset.gestures.length });
     }
@@ -207,7 +229,7 @@ const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
   cors: {
-    origin: '*',
+    origin: allowedOrigins,
     methods: ['GET', 'POST'],
   },
   transports: ['websocket', 'polling'],
@@ -218,8 +240,24 @@ function sanitizeRole(role) {
   return 'non_signer';
 }
 
-// Store active room tracking: Map<roomId, { hostId: string, members: Map<socketId, userMeta> }>
+// Store active room tracking: Map<roomId, { hostId: string | null, members: Map<socketId, userMeta>, messages: Array }>
 const rooms = new Map();
+
+// Helper: Verify if two socket IDs share at least one active room
+function arePeersInSameRoom(socketAId, socketBId) {
+  for (const [, roomData] of rooms.entries()) {
+    if (roomData.members.has(socketAId) && roomData.members.has(socketBId)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Helper: Safely transfer host to the next authenticated (non-guest) member
+function transferHostToNextNonGuest(roomData) {
+  const nextHostEntry = Array.from(roomData.members.entries()).find(([, meta]) => !meta.isGuest);
+  return nextHostEntry ? nextHostEntry[0] : null;
+}
 
 io.on('connection', (socket) => {
   console.log(`[Socket Connected] Client ID: ${socket.id}`);
@@ -319,11 +357,10 @@ io.on('connection', (socket) => {
       if (roomMembers.size === 0) {
         rooms.delete(roomId);
       } else {
-        // If host left, transfer host role to next active member
+        // If host left, transfer host role only to the next authenticated (non-guest) member
         if (roomData.hostId === socket.id) {
-          const nextHost = Array.from(roomMembers.keys())[0];
-          roomData.hostId = nextHost;
-          console.log(`[Host Transfer] Room ${roomId} host transferred to ${nextHost}`);
+          roomData.hostId = transferHostToNextNonGuest(roomData);
+          console.log(`[Host Transfer] Room ${roomId} host transferred to ${roomData.hostId || 'None (guests only)'}`);
         }
         socket.to(roomId).emit('user_left', { userId: socket.id, roomId, hostId: roomData.hostId });
       }
@@ -332,21 +369,31 @@ io.on('connection', (socket) => {
   });
 
   socket.on('end_room', ({ roomId }) => {
-    if (roomId) {
-      console.log(`[End Room] Client ${socket.id} ended room ${roomId} for everyone`);
-      io.in(roomId).emit('room_ended', { roomId, senderId: socket.id, reason: 'Meeting ended' });
-      io.in(roomId).emit('kick_peer_request', { senderId: socket.id, reason: 'Meeting ended' });
-      if (rooms.has(roomId)) {
-        rooms.delete(roomId);
-      }
+    if (!roomId) return;
+    const roomData = rooms.get(roomId);
+    if (!roomData || !roomData.members.has(socket.id)) {
+      console.warn(`[Unauthorized] Non-member ${socket.id} attempted to end room ${roomId}`);
+      socket.emit('error', { message: 'Unauthorized: You are not a member of this room.' });
+      return;
     }
+    if (!roomData.hostId || roomData.hostId !== socket.id) {
+      console.warn(`[Unauthorized] Non-host ${socket.id} attempted to end room ${roomId}`);
+      socket.emit('error', { message: 'Unauthorized: Only host can end room for everyone.' });
+      return;
+    }
+
+    console.log(`[End Room] Host ${socket.id} ended room ${roomId} for everyone`);
+    io.in(roomId).emit('room_ended', { roomId, senderId: socket.id, reason: 'Meeting ended' });
+    io.in(roomId).emit('kick_peer_request', { senderId: socket.id, reason: 'Meeting ended' });
+    rooms.delete(roomId);
   });
 
   // Real-Time Sign Language Gesture Stream
   socket.on('send_gesture', ({ roomId, gesture, confidence, timestamp }) => {
     if (roomId && rooms.has(roomId)) {
       const roomData = rooms.get(roomId);
-      const meta = roomData.members?.get(socket.id);
+      if (!roomData.members.has(socket.id)) return;
+      const meta = roomData.members.get(socket.id);
       socket.to(roomId).emit('gesture_stream', {
         senderId: socket.id,
         senderName: meta?.name || `Participant ${socket.id.slice(0, 4)}`,
@@ -359,23 +406,19 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Real-Time Speech-to-Text Caption Stream (Broadcast to all room participants so any user with STT enabled sees captions)
-  socket.on('speech_caption', ({ roomId, text, isFinal, senderId, senderName, avatarColor, avatarUrl }) => {
+  // Real-Time Speech-to-Text Caption Stream (Author attribution enforced by Server)
+  socket.on('speech_caption', ({ roomId, text, isFinal }) => {
     if (roomId && rooms.has(roomId) && typeof text === 'string' && text.trim().length > 0) {
       const roomData = rooms.get(roomId);
-      const effectiveSenderId = senderId || socket.id;
-      const senderMeta = roomData.members?.get(effectiveSenderId) || roomData.members?.get(socket.id);
+      if (!roomData.members.has(socket.id)) return;
+      const senderMeta = roomData.members.get(socket.id);
       const cleanText = text.trim().slice(0, 500);
-      const finalSenderName = senderName || senderMeta?.name || `Speaker ${effectiveSenderId.slice(0, 4)}`;
-      const finalAvatarColor = avatarColor || senderMeta?.avatarColor || null;
-      const finalAvatarUrl = avatarUrl || senderMeta?.avatarUrl || null;
 
-      // Broadcast to all room members so anyone with STT mode enabled receives captions
       io.in(roomId).emit('speech_caption_stream', {
-        senderId: effectiveSenderId,
-        senderName: finalSenderName,
-        avatarColor: finalAvatarColor,
-        avatarUrl: finalAvatarUrl,
+        senderId: socket.id,
+        senderName: senderMeta?.name || `Speaker ${socket.id.slice(0, 4)}`,
+        avatarColor: senderMeta?.avatarColor || null,
+        avatarUrl: senderMeta?.avatarUrl || null,
         text: cleanText,
         isFinal: !!isFinal,
         timestamp: Date.now(),
@@ -387,7 +430,8 @@ io.on('connection', (socket) => {
   socket.on('send_chat_message', ({ id, roomId, text, senderName }) => {
     if (roomId && text && typeof text === 'string' && text.trim().length > 0) {
       const roomData = rooms.get(roomId);
-      const clientMeta = roomData?.members?.get(socket.id);
+      if (!roomData || !roomData.members.has(socket.id)) return;
+      const clientMeta = roomData.members.get(socket.id);
       const name = clientMeta?.name || (senderName && senderName !== 'You' ? senderName : null) || 'Participant';
 
       const messageData = {
@@ -400,61 +444,59 @@ io.on('connection', (socket) => {
       };
 
       if (text.trim() === '__SL_MEET_ROOM_ENDED_SIGNAL__') {
+        if (!roomData.hostId || roomData.hostId !== socket.id) {
+          console.warn(`[Unauthorized] Non-host ${socket.id} attempted to broadcast room ended signal in ${roomId}`);
+          return;
+        }
         io.in(roomId).emit('room_ended', { roomId, senderId: socket.id, reason: 'Meeting ended' });
         io.in(roomId).emit('kick_peer_request', { senderId: socket.id, reason: 'Meeting ended' });
         io.in(roomId).emit('chat_message', messageData);
-        if (rooms.has(roomId)) {
-          rooms.delete(roomId);
-        }
+        rooms.delete(roomId);
         return;
       }
 
-      if (roomData) {
-        if (!roomData.messages) roomData.messages = [];
-        roomData.messages.push(messageData);
-        if (roomData.messages.length > 200) {
-          roomData.messages.shift();
-        }
+      if (!roomData.messages) roomData.messages = [];
+      roomData.messages.push(messageData);
+      if (roomData.messages.length > 200) {
+        roomData.messages.shift();
       }
 
       io.in(roomId).emit('chat_message', messageData);
     }
   });
 
-  // Screen Sharing Presenting Status Broadcast
+  // Presenting status
   socket.on('presenting_status', ({ roomId, isPresenting, screenStreamId }) => {
     if (roomId && rooms.has(roomId)) {
       const roomData = rooms.get(roomId);
-      const roomMembers = roomData.members;
-      if (roomMembers.has(socket.id)) {
-        const meta = roomMembers.get(socket.id);
-        meta.isPresenting = isPresenting;
-        meta.screenStreamId = screenStreamId;
-        roomMembers.set(socket.id, meta);
+      const meta = roomData.members.get(socket.id);
+      if (meta) {
+        meta.isPresenting = !!isPresenting;
+        meta.screenStreamId = isPresenting ? screenStreamId : null;
+        roomData.members.set(socket.id, meta);
+
+        console.log(`[Presentation] User ${socket.id} presenting: ${isPresenting} (Stream: ${screenStreamId})`);
+        io.in(roomId).emit('peer_presenting_changed', {
+          userId: socket.id,
+          isPresenting: !!isPresenting,
+          screenStreamId: isPresenting ? screenStreamId : null,
+        });
       }
-      
-      socket.to(roomId).emit('peer_presenting', {
-        senderId: socket.id,
-        isPresenting,
-        screenStreamId,
-      });
     }
   });
 
-  // Real-Time Camera & Microphone Status Broadcast (Including Voice Activity Detection)
+  // Media Status Broadcast (Mic mute, Camera off, AI Vision active, Audio speaking)
   socket.on('media_status_change', ({ roomId, isMuted, isCameraOff, isAiVisionActive, isSpeaking }) => {
     if (roomId && rooms.has(roomId)) {
       const roomData = rooms.get(roomId);
-      const roomMembers = roomData.members;
-      if (roomMembers.has(socket.id)) {
-        const meta = roomMembers.get(socket.id);
-        meta.isMuted = !!isMuted;
-        meta.isCameraOff = !!isCameraOff;
-        meta.isAiVisionActive = !!isAiVisionActive;
-        meta.isSpeaking = !!isSpeaking;
-        roomMembers.set(socket.id, meta);
+      const meta = roomData.members.get(socket.id);
+      if (meta) {
+        if (isMuted !== undefined) meta.isMuted = !!isMuted;
+        if (isCameraOff !== undefined) meta.isCameraOff = !!isCameraOff;
+        if (isAiVisionActive !== undefined) meta.isAiVisionActive = !!isAiVisionActive;
+        roomData.members.set(socket.id, meta);
       }
-      
+
       socket.to(roomId).emit('peer_media_status', {
         senderId: socket.id,
         isMuted: !!isMuted,
@@ -464,7 +506,6 @@ io.on('connection', (socket) => {
       });
     }
   });
-
 
   // Host Actions: Remote Peer Moderation (Mute / Kick) - Server Validated
   socket.on('mute_peer', ({ roomId, targetId }) => {
@@ -498,17 +539,29 @@ io.on('connection', (socket) => {
     }
   });
 
-  // WebRTC Peer-to-Peer Signaling
+  // WebRTC Peer-to-Peer Signaling (Protected against Cross-Room Signal Injection)
   socket.on('webrtc_offer', ({ targetId, offer }) => {
-    io.to(targetId).emit('webrtc_offer', { senderId: socket.id, offer });
+    if (arePeersInSameRoom(socket.id, targetId)) {
+      io.to(targetId).emit('webrtc_offer', { senderId: socket.id, offer });
+    } else {
+      console.warn(`[WebRTC Security] Blocked cross-room offer from ${socket.id} to ${targetId}`);
+    }
   });
 
   socket.on('webrtc_answer', ({ targetId, answer }) => {
-    io.to(targetId).emit('webrtc_answer', { senderId: socket.id, answer });
+    if (arePeersInSameRoom(socket.id, targetId)) {
+      io.to(targetId).emit('webrtc_answer', { senderId: socket.id, answer });
+    } else {
+      console.warn(`[WebRTC Security] Blocked cross-room answer from ${socket.id} to ${targetId}`);
+    }
   });
 
   socket.on('webrtc_candidate', ({ targetId, candidate }) => {
-    io.to(targetId).emit('webrtc_candidate', { senderId: socket.id, candidate });
+    if (arePeersInSameRoom(socket.id, targetId)) {
+      io.to(targetId).emit('webrtc_candidate', { senderId: socket.id, candidate });
+    } else {
+      console.warn(`[WebRTC Security] Blocked cross-room candidate from ${socket.id} to ${targetId}`);
+    }
   });
 
   socket.on('disconnecting', () => {
@@ -522,9 +575,8 @@ io.on('connection', (socket) => {
           rooms.delete(room);
         } else {
           if (roomData.hostId === socket.id) {
-            const nextHost = Array.from(roomMembers.keys())[0];
-            roomData.hostId = nextHost;
-            console.log(`[Host Transfer] Room ${room} host transferred to ${nextHost}`);
+            roomData.hostId = transferHostToNextNonGuest(roomData);
+            console.log(`[Host Transfer] Room ${room} host transferred to ${roomData.hostId || 'None (guests only)'}`);
           }
           socket.to(room).emit('user_left', { userId: socket.id, roomId: room, hostId: roomData.hostId });
         }

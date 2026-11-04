@@ -1,17 +1,19 @@
-import brandLogo from './brand-logo.png';
-import homeIllustration from './home-illustration.png';
-import appIcon from './app-icon.png';
-import andyNote from './andy-note.png';
-import videoAds from './video-ads.mp4';
-import mediapipeLogo from './mediapipe-logo.svg';
-import tensorflowLogo from './tensorflow-logo.svg';
+import './fonts/fonts.css';
+import logoPrimary from './images/brand/logo-primary.png';
+import andyNote from './images/illustrations/andy-note.png';
+import ad11s from './videos/ads/ad-11s.mp4';
 
-export {
+// Primary asset exports
+export { logoPrimary, andyNote, ad11s };
+
+// Backwards-compatible aliases
+export const brandLogo = logoPrimary;
+export const videoAds = ad11s;
+
+export default {
+  logoPrimary,
   brandLogo,
-  homeIllustration,
-  appIcon,
   andyNote,
+  ad11s,
   videoAds,
-  mediapipeLogo,
-  tensorflowLogo,
 };
