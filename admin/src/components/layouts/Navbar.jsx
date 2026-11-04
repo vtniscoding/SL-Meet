@@ -27,11 +27,7 @@ export default function Navbar({
         style={{ WebkitAppRegion: 'no-drag' }}
       >
         {NAV_ITEMS.map((item) => {
-          const isItemActive =
-            activeTab === item.id ||
-            (item.id === 'training' && activeTab === 'gestures') ||
-            (item.id === 'nlp' && activeTab === 'phrases') ||
-            (item.id === 'monitoring' && activeTab === 'debugger');
+          const isItemActive = activeTab === item.id;
 
           return (
             <button

@@ -33,18 +33,10 @@ export default function App() {
   const [authModalMode, setAuthModalMode] = useState('login');
   const [isPreloading, setIsPreloading] = useState(true);
 
-  // Detect direct navigation to Studio portal (#admin, #monitoring, #dataset, etc.)
+  // Detect direct navigation to Studio portal (Standardized prefix #admin)
   const [isAdminRoute, setIsAdminRoute] = useState(() => {
     if (typeof window === 'undefined') return false;
-    const hash = window.location.hash || '';
-    return (
-      hash.startsWith('#admin') ||
-      hash.startsWith('#debugger') ||
-      hash.startsWith('#vision-debugger') ||
-      hash.startsWith('#monitoring') ||
-      hash.startsWith('#dataset') ||
-      hash.startsWith('#nlp')
-    );
+    return (window.location.hash || '').startsWith('#admin');
   });
 
   // Preload local MediaPipe WASM and Whisper speech model once at startup
@@ -81,15 +73,7 @@ export default function App() {
     const gestureChannel = initRealtimeDatasetSync();
 
     const handleHashChange = () => {
-      const hash = window.location.hash || '';
-      setIsAdminRoute(
-        hash.startsWith('#admin') ||
-        hash.startsWith('#debugger') ||
-        hash.startsWith('#vision-debugger') ||
-        hash.startsWith('#monitoring') ||
-        hash.startsWith('#dataset') ||
-        hash.startsWith('#nlp')
-      );
+      setIsAdminRoute((window.location.hash || '').startsWith('#admin'));
     };
 
     window.addEventListener('hashchange', handleHashChange);

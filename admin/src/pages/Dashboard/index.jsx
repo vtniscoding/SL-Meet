@@ -22,16 +22,11 @@ import NlpPage from '../NLP';
  * 4. Monitoring (60 FPS telemetry & MediaPipe inspector)
  */
 export default function AdminDashboard({ initialTab = 'training' }) {
-  // Navigation Tab State: 'training' | 'dataset' | 'nlp' | 'monitoring'
-  const [activeTab, setActiveTab] = useState(
-    initialTab === 'monitoring' || initialTab === 'debugger'
-      ? 'monitoring'
-      : initialTab === 'dataset'
-      ? 'dataset'
-      : initialTab === 'nlp' || initialTab === 'phrases'
-      ? 'nlp'
-      : 'training'
-  );
+  // Standardized Navigation Tabs: 'training' | 'dataset' | 'nlp' | 'monitoring'
+  const [activeTab, setActiveTab] = useState(() => {
+    const validTabs = ['training', 'dataset', 'nlp', 'monitoring'];
+    return validTabs.includes(initialTab) ? initialTab : 'training';
+  });
 
   // Hidden file input for backup JSON import
   const importInputRef = useRef(null);
@@ -92,10 +87,10 @@ export default function AdminDashboard({ initialTab = 'training' }) {
   // Tab change handler with graceful video loop pause
   const handleTabChange = useCallback(
     (nextTab) => {
-      if (nextTab !== 'training' && nextTab !== 'gestures') {
+      if (nextTab !== 'training') {
         // Pause 60 FPS video render and inference loops when leaving Data Labeling
         camera.stopCamera(false);
-      } else if (nextTab === 'training' || nextTab === 'gestures') {
+      } else if (nextTab === 'training') {
         if (
           camera.cameraStreamRef.current &&
           camera.cameraStreamRef.current.active &&
@@ -229,7 +224,7 @@ export default function AdminDashboard({ initialTab = 'training' }) {
       )}
 
       {/* Page 3: Natural Language Processing (NLP) & Grammar Rules */}
-      {(activeTab === 'nlp' || activeTab === 'phrases') && (
+      {activeTab === 'nlp' && (
         <NlpPage
           phraseSignCount={phraseSignCount}
           setPhraseSignCount={setPhraseSignCount}
@@ -254,7 +249,7 @@ export default function AdminDashboard({ initialTab = 'training' }) {
       )}
 
       {/* Page 4: Monitoring & AI Vision Telemetry Debugger */}
-      {(activeTab === 'monitoring' || activeTab === 'debugger') && (
+      {activeTab === 'monitoring' && (
         <div className="flex-1 w-full h-full min-h-0 overflow-hidden flex flex-col">
           <MonitoringPage
             isEmbedded={true}
