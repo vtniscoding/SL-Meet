@@ -99,7 +99,12 @@ export default function ProfileAvatarMenu({
                   if (window.electronAPI?.openTrainingMonitor) {
                     window.electronAPI.openTrainingMonitor('#admin');
                   } else {
-                    window.open(adminUrl, '_blank', 'noopener,noreferrer');
+                    const customAdminUrl = import.meta.env.VITE_ADMIN_URL;
+                    const targetUrl =
+                      customAdminUrl && !customAdminUrl.includes('localhost:5174')
+                        ? customAdminUrl
+                        : '#admin';
+                    window.open(targetUrl, '_blank', 'noopener,noreferrer');
                   }
                 }}
                 className="w-full flex items-center space-x-2.5 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-[#5CA0F2] rounded-lg transition-colors cursor-pointer outline-none"

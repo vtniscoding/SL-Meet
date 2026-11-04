@@ -16,6 +16,9 @@ import {
   preloadMediaPipeHands,
 } from '@sl-meet/shared';
 
+// Lazy-load Admin Studio so it is bundled and directly accessible on production via #admin
+const AdminDashboard = React.lazy(() => import('@sl-meet/admin/pages/Dashboard'));
+
 export default function App() {
   const [currentView, setCurrentView] = useState('home'); // 'home' | 'dashboard' | 'lobby' | 'room'
   const [activeRoomId, setActiveRoomId] = useState('');
@@ -29,6 +32,20 @@ export default function App() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState('login');
   const [isPreloading, setIsPreloading] = useState(true);
+
+  // Detect direct navigation to Studio portal (#admin, #monitoring, #dataset, etc.)
+  const [isAdminRoute, setIsAdminRoute] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const hash = window.location.hash || '';
+    return (
+      hash.startsWith('#admin') ||
+      hash.startsWith('#debugger') ||
+      hash.startsWith('#vision-debugger') ||
+      hash.startsWith('#monitoring') ||
+      hash.startsWith('#dataset') ||
+      hash.startsWith('#nlp')
+    );
+  });
 
   // Preload local MediaPipe WASM and Whisper speech model once at startup
   useEffect(() => {
@@ -64,12 +81,16 @@ export default function App() {
     const gestureChannel = initRealtimeDatasetSync();
 
     const handleHashChange = () => {
-      const hash = window.location.hash;
-      if (hash === '#admin' || hash === '#debugger' || hash === '#vision-debugger') {
-        window.location.href = `http://localhost:5174/${hash}`;
-      }
+      const hash = window.location.hash || '';
+      setIsAdminRoute(
+        hash.startsWith('#admin') ||
+        hash.startsWith('#debugger') ||
+        hash.startsWith('#vision-debugger') ||
+        hash.startsWith('#monitoring') ||
+        hash.startsWith('#dataset') ||
+        hash.startsWith('#nlp')
+      );
     };
-    handleHashChange();
 
     window.addEventListener('hashchange', handleHashChange);
     return () => {
@@ -225,6 +246,25 @@ export default function App() {
     setCurrentView(user ? 'dashboard' : 'home');
     setActiveRoomId('');
   };
+
+  // Render Isolated Admin Training & Monitoring Studio (Accessed via #admin, #monitoring, etc.)
+  if (isAdminRoute) {
+    const rawHash = (window.location.hash || '').replace(/^#/, '');
+    const cleanTab = rawHash.replace(/^admin\/?/, '');
+    const initialTab = cleanTab || 'training';
+
+    return (
+      <React.Suspense
+        fallback={
+          <div className="w-screen h-screen bg-[#000000] flex items-center justify-center select-none">
+            <Loader2 className="w-8 h-8 text-[#5CA0F2] animate-spin" />
+          </div>
+        }
+      >
+        <AdminDashboard initialTab={initialTab} />
+      </React.Suspense>
+    );
+  }
 
   // Render simple minimal loading spinner during initial offline preload
   if (isPreloading) {

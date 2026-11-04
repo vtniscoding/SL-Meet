@@ -58,14 +58,14 @@ function createStudioWindow(initialHash = '#admin') {
   });
 
   const hash = initialHash.startsWith('#') ? initialHash : `#${initialHash}`;
-  const adminUrl = process.env.VITE_ADMIN_URL || 'http://localhost:5174';
   if (isDev) {
+    const adminUrl = process.env.VITE_ADMIN_URL || 'http://localhost:5173';
     studioWindow.loadURL(`${adminUrl}/${hash}`);
   } else {
     const adminDist = path.join(__dirname, '../../admin/dist/index.html');
     if (fs.existsSync(adminDist)) {
       studioWindow.loadFile(adminDist, { hash: hash.replace('#', '') });
-    } else if (process.env.VITE_ADMIN_URL) {
+    } else if (process.env.VITE_ADMIN_URL && !process.env.VITE_ADMIN_URL.includes('localhost:5174')) {
       studioWindow.loadURL(`${process.env.VITE_ADMIN_URL}/${hash}`);
     } else {
       studioWindow.loadFile(path.join(__dirname, '../dist/index.html'), { hash: hash.replace('#', '') });
