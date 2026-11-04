@@ -168,10 +168,17 @@ export function AuthProvider({ children }) {
     [user]
   );
 
+  const isAdmin = Boolean(
+    profile?.role === 'admin' ||
+    user?.app_metadata?.role === 'admin' ||
+    user?.user_metadata?.role === 'admin'
+  );
+
   const value = {
     user,
     session,
     profile,
+    isAdmin,
     loading,
     signIn,
     signUp,

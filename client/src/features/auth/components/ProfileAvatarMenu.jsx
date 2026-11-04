@@ -13,12 +13,22 @@ export default function ProfileAvatarMenu({
   user,
   profile,
   onSignOut,
+  isAdmin: propIsAdmin,
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
   const displayName = profile?.display_name || user?.email?.split('@')[0] || 'User';
   const avatarUrl = profile?.avatar_url || user?.user_metadata?.avatar_url || null;
+  const isAdmin =
+    propIsAdmin !== undefined
+      ? propIsAdmin
+      : Boolean(
+          profile?.role === 'admin' ||
+          user?.app_metadata?.role === 'admin' ||
+          user?.user_metadata?.role === 'admin'
+        );
+  const adminUrl = import.meta.env.VITE_ADMIN_URL || 'http://localhost:5174';
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -67,28 +77,38 @@ export default function ProfileAvatarMenu({
               className="w-10 h-10 text-sm"
             />
             <div className="min-w-0">
-              <p className="text-sm font-bold text-slate-900 truncate">{displayName}</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-bold text-slate-900 truncate">{displayName}</p>
+                {isAdmin && (
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-[#0B57D0] uppercase tracking-wide shrink-0">
+                    Admin
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-slate-500 truncate">{user?.email}</p>
             </div>
           </div>
 
-          <div className="py-2 space-y-1 border-b border-slate-100">
-            <button
-              type="button"
-              onClick={() => {
-                setIsMenuOpen(false);
-                if (window.electronAPI?.openTrainingMonitor) {
-                  window.electronAPI.openTrainingMonitor('#admin');
-                } else {
-                  window.location.href = 'http://localhost:5174';
-                }
-              }}
-              className="w-full flex items-center space-x-2.5 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-[#5CA0F2] rounded-lg transition-colors cursor-pointer outline-none"
-            >
-              <SignGestureIcon className="w-4 h-4 text-[#5CA0F2] shrink-0" />
-              <span>Training and Monitoring</span>
-            </button>
-          </div>
+          {/* Admin-only Access to Training & Monitoring Studio */}
+          {isAdmin && (
+            <div className="py-2 space-y-1 border-b border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  if (window.electronAPI?.openTrainingMonitor) {
+                    window.electronAPI.openTrainingMonitor('#admin');
+                  } else {
+                    window.open(adminUrl, '_blank', 'noopener,noreferrer');
+                  }
+                }}
+                className="w-full flex items-center space-x-2.5 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-[#5CA0F2] rounded-lg transition-colors cursor-pointer outline-none"
+              >
+                <SignGestureIcon className="w-4 h-4 text-[#5CA0F2] shrink-0" />
+                <span>Training and Monitoring</span>
+              </button>
+            </div>
+          )}
 
           <div className="pt-2">
             <button

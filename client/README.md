@@ -75,6 +75,7 @@ Copy [`.env.example`](./.env.example) to `.env`:
 VITE_SOCKET_URL=http://localhost:4000
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-key
+VITE_ADMIN_URL=http://localhost:5174
 ```
 
 ---

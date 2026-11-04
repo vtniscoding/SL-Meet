@@ -113,6 +113,7 @@ Copy `.env.example` to `.env` in each workspace and populate your credentials:
   VITE_SOCKET_URL=http://localhost:4000
   VITE_SUPABASE_URL=https://your-project.supabase.co
   VITE_SUPABASE_PUBLISHABLE_KEY=your-supabase-anon-or-publishable-key
+  VITE_ADMIN_URL=http://localhost:5174
   ```
 - **`admin/.env`**:
   ```env
