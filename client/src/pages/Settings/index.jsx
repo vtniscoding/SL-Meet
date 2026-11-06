@@ -168,10 +168,15 @@ export default function SettingsPage({
           <div className="w-full px-1">
             <button
               type="button"
-              className="w-full py-2.5 rounded-xl flex flex-col items-center bg-white shadow-xs text-[#0B57D0] transition-all cursor-pointer border border-slate-200/60"
-              title="Settings"
+              className="relative w-full py-2.5 rounded-xl flex flex-col items-center bg-white shadow-xs text-[#0B57D0] transition-all cursor-pointer border border-slate-200/60"
+              title={hasUpdate ? 'Settings (Update available)' : 'Settings'}
             >
-              <SettingsNavIcon className="w-5 h-5 mb-1 text-[#0B57D0]" />
+              <div className="relative">
+                <SettingsNavIcon className="w-5 h-5 mb-1 text-[#0B57D0]" />
+                {hasUpdate && (
+                  <span className="absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-[#EA4335] ring-2 ring-white" />
+                )}
+              </div>
               <span className="text-[10px] font-bold">Settings</span>
             </button>
           </div>

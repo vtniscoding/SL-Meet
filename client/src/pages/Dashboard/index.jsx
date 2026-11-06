@@ -20,6 +20,7 @@ import {
   ProfileAvatarMenu,
   useRoomHistory,
   RoomHistoryCard,
+  useUpdater,
 } from '../../features';
 
 // Fun Andy Pop Sound (Single pleasant, bubbly cartoon pop via Web Audio API)
@@ -67,6 +68,7 @@ export default function UserDashboard({
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const { hasUpdate } = useUpdater();
 
   const menuRef = useRef(null);
 
@@ -285,10 +287,15 @@ export default function UserDashboard({
             <button
               type="button"
               onClick={onOpenSettings}
-              className="w-full py-2.5 rounded-xl flex flex-col items-center text-slate-500 hover:text-slate-800 hover:bg-white/60 transition-all cursor-pointer"
-              title="Settings"
+              className="relative w-full py-2.5 rounded-xl flex flex-col items-center text-slate-500 hover:text-slate-800 hover:bg-white/60 transition-all cursor-pointer"
+              title={hasUpdate ? 'Settings (Update available)' : 'Settings'}
             >
-              <SettingsNavIcon className="w-5 h-5 mb-1" />
+              <div className="relative">
+                <SettingsNavIcon className="w-5 h-5 mb-1" />
+                {hasUpdate && (
+                  <span className="absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-[#EA4335] ring-2 ring-[#EAECEE]" />
+                )}
+              </div>
               <span className="text-[10px] font-medium">Settings</span>
             </button>
           </div>

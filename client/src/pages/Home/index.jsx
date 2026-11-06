@@ -10,7 +10,7 @@ import {
   NotificationBellIcon,
 } from '@sl-meet/shared/icons';
 import { TitleBar } from '@sl-meet/shared';
-import { ProfileAvatarMenu } from '../../features';
+import { ProfileAvatarMenu, useUpdater } from '../../features';
 import InfinityLogoCarousel from './components/InfinityLogoCarousel';
 import WaveRibbonBackground from './components/WaveRibbonBackground';
 import TransparentVideo from './components/TransparentVideo';
@@ -49,6 +49,7 @@ export default function HomePage({
   onOpenSettings,
 }) {
   const [isHoveringCard, setIsHoveringCard] = useState(false);
+  const { hasUpdate } = useUpdater();
 
   return (
     <div className="w-screen h-screen overflow-hidden bg-[#EAECEE] text-slate-900 flex flex-col font-sans select-none">
@@ -154,10 +155,15 @@ export default function HomePage({
             <button
               type="button"
               onClick={onOpenSettings}
-              className="w-full py-2.5 rounded-xl flex flex-col items-center text-slate-500 hover:text-slate-800 hover:bg-white/60 transition-all cursor-pointer"
-              title="Settings"
+              className="relative w-full py-2.5 rounded-xl flex flex-col items-center text-slate-500 hover:text-slate-800 hover:bg-white/60 transition-all cursor-pointer"
+              title={hasUpdate ? 'Settings (Update available)' : 'Settings'}
             >
-              <SettingsNavIcon className="w-5 h-5 mb-1" />
+              <div className="relative">
+                <SettingsNavIcon className="w-5 h-5 mb-1" />
+                {hasUpdate && (
+                  <span className="absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-[#EA4335] ring-2 ring-[#EAECEE]" />
+                )}
+              </div>
               <span className="text-[10px] font-medium">Settings</span>
             </button>
           </div>
