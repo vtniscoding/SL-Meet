@@ -7,9 +7,14 @@ import {
   ErrorBoundary,
   useLocalMedia,
   preloadWhisperModel,
-  UpdateNotificationBanner,
 } from './features';
-import { HomePage, DashboardPage, LobbyPage, RoomPage } from './pages';
+import {
+  HomePage,
+  DashboardPage,
+  LobbyPage,
+  RoomPage,
+  SettingsPage,
+} from './pages';
 import {
   supabase,
   fetchDatasetFromServer,
@@ -260,59 +265,74 @@ export default function App() {
     );
   }
 
-  // Render User Dashboard (When authenticated and on dashboard view)
-  if (user && currentView === 'dashboard') {
+  // Render Settings View (Same main window)
+  if (currentView === 'settings') {
     return (
       <>
-        <DashboardPage
+        <SettingsPage
           user={user}
           profile={profile}
           onSignOut={handleSignOut}
-          onCreateMeeting={handleCreateNewMeeting}
-          onJoinMeeting={handleJoinMeetingFromDashboard}
+          onOpenAuthModal={(mode) => {
+            setAuthModalMode(mode);
+            setAuthModalOpen(true);
+          }}
+          onNavigateHome={() => setCurrentView(user ? 'dashboard' : 'home')}
         />
-        <UpdateNotificationBanner suppressed={false} />
+        <AuthModal
+          isOpen={authModalOpen}
+          onClose={() => setAuthModalOpen(false)}
+          initialMode={authModalMode}
+        />
       </>
+    );
+  }
+
+  // Render User Dashboard (When authenticated and on dashboard view)
+  if (user && currentView === 'dashboard') {
+    return (
+      <DashboardPage
+        user={user}
+        profile={profile}
+        onSignOut={handleSignOut}
+        onCreateMeeting={handleCreateNewMeeting}
+        onJoinMeeting={handleJoinMeetingFromDashboard}
+        onOpenSettings={() => setCurrentView('settings')}
+      />
     );
   }
 
   // Render Waiting Lobby View
   if (currentView === 'lobby') {
     return (
-      <>
-        <LobbyPage
-          roomId={activeRoomId}
-          mediaState={mediaState}
-          onJoinMeeting={handleEnterMeetingFromLobby}
-          onBackHome={handleBackHomeFromLobby}
-          initialDisplayName={userDisplayName || profile?.display_name || (user ? user.email?.split('@')[0] : '')}
-          isAuthenticated={!!user}
-          user={user}
-          profile={profile}
-          onSignOut={handleSignOut}
-        />
-        <UpdateNotificationBanner suppressed={false} />
-      </>
+      <LobbyPage
+        roomId={activeRoomId}
+        mediaState={mediaState}
+        onJoinMeeting={handleEnterMeetingFromLobby}
+        onBackHome={handleBackHomeFromLobby}
+        initialDisplayName={userDisplayName || profile?.display_name || (user ? user.email?.split('@')[0] : '')}
+        isAuthenticated={!!user}
+        user={user}
+        profile={profile}
+        onSignOut={handleSignOut}
+      />
     );
   }
 
-  // Render Room View with ErrorBoundary protection (Updates strictly suppressed mid-call)
+  // Render Room View with ErrorBoundary protection
   if (currentView === 'room') {
     return (
-      <>
-        <ErrorBoundary onReset={handleLeaveRoom}>
-          <RoomPage
-            roomId={activeRoomId}
-            onLeaveRoom={handleLeaveRoom}
-            mediaState={mediaState}
-            userName={userDisplayName || (user ? user.email?.split('@')[0] : 'Participant')}
-            currentUser={user}
-            profile={profile}
-            initialRole={userRole}
-          />
-        </ErrorBoundary>
-        <UpdateNotificationBanner suppressed={true} />
-      </>
+      <ErrorBoundary onReset={handleLeaveRoom}>
+        <RoomPage
+          roomId={activeRoomId}
+          onLeaveRoom={handleLeaveRoom}
+          mediaState={mediaState}
+          userName={userDisplayName || (user ? user.email?.split('@')[0] : 'Participant')}
+          currentUser={user}
+          profile={profile}
+          initialRole={userRole}
+        />
+      </ErrorBoundary>
     );
   }
 
@@ -338,9 +358,8 @@ export default function App() {
         isCheckingCode={isCheckingCode}
         handleJoinSubmit={handleJoinSubmit}
         userDisplayName={userDisplayName}
+        onOpenSettings={() => setCurrentView('settings')}
       />
-
-      <UpdateNotificationBanner suppressed={false} />
 
       {/* Auth Modal for Sign In / Sign Up */}
       <AuthModal

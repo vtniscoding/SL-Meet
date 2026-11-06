@@ -8,10 +8,10 @@ import {
   BackNavIcon as ArrowLeft,
   ChevronDownIcon,
   CheckmarkIcon,
+  NotificationBellIcon,
 } from '@sl-meet/shared/icons';
 import {
   CommunicationModePicker,
-  NotificationBellMenu,
   ProfileAvatarMenu,
 } from '../../features';
 import { TitleBar } from '@sl-meet/shared';
@@ -244,7 +244,14 @@ export default function WaitingLobby({
 
         {/* Top-Right: [Notifications] [Avatar Menu] [Window Controls] */}
         <div style={{ WebkitAppRegion: 'no-drag' }} className="flex items-center h-full space-x-2.5">
-          <NotificationBellMenu />
+          <button
+            type="button"
+            className="p-1.5 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer outline-none"
+            title="Notifications"
+            aria-label="Notifications"
+          >
+            <NotificationBellIcon className="w-4 h-4" />
+          </button>
           {user && (
             <ProfileAvatarMenu
               user={user}

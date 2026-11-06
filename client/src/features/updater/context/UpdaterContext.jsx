@@ -32,12 +32,9 @@ export function UpdaterProvider({ children }) {
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [errorMessage, setErrorMessage] = useState(null);
   const [lastCheckedAt, setLastCheckedAt] = useState(null);
-  const [isBannerDismissed, setIsBannerDismissed] = useState(false);
-  const [hasUnread, setHasUnread] = useState(false);
 
   const currentVersionRef = useRef(currentVersion);
   const lastWebCheckMsRef = useRef(0);
-  const notifiedSignatureRef = useRef(null);
 
   useEffect(() => {
     currentVersionRef.current = currentVersion;
@@ -77,21 +74,13 @@ export function UpdaterProvider({ children }) {
           setErrorMessage(null);
           break;
 
-        case 'available': {
-          const nextVer = payload.version || null;
-          const sig = `desktop:${nextVer}`;
+        case 'available':
           setStatus('available');
-          setAvailableVersion(nextVer);
+          setAvailableVersion(payload.version || null);
           setUpdateReason('version');
           setErrorMessage(null);
           setLastCheckedAt(new Date().toISOString());
-          if (notifiedSignatureRef.current !== sig) {
-            notifiedSignatureRef.current = sig;
-            setHasUnread(true);
-            setIsBannerDismissed(false);
-          }
           break;
-        }
 
         case 'not-available':
           setStatus((prev) =>
@@ -124,8 +113,6 @@ export function UpdaterProvider({ children }) {
           }
           setDownloadProgress(100);
           setErrorMessage(null);
-          setHasUnread(true);
-          setIsBannerDismissed(false);
           break;
 
         case 'error':
@@ -201,24 +188,17 @@ export function UpdaterProvider({ children }) {
         );
 
         if (newerSemver || newerBuild) {
-          const sig = `web:${remote?.version || ''}:${remote?.buildTime || ''}`;
           setAvailableVersion(remote?.version || currentVersionRef.current);
           setUpdateReason(newerSemver ? 'version' : 'build');
           setStatus('web-reload-needed');
           setErrorMessage(null);
-
-          if (notifiedSignatureRef.current !== sig) {
-            notifiedSignatureRef.current = sig;
-            setHasUnread(true);
-            setIsBannerDismissed(false);
-          }
         } else {
           setStatus((prev) =>
             prev === 'web-reload-needed' ? prev : 'up-to-date'
           );
           setErrorMessage(null);
         }
-      } catch (err) {
+      } catch {
         if (isManual) {
           setStatus((prev) =>
             prev === 'web-reload-needed' ? prev : 'error'
@@ -269,15 +249,9 @@ export function UpdaterProvider({ children }) {
       if (isElectron) {
         window.electronAPI?.checkForUpdates?.();
       } else {
-        const sig = `socket:${remoteVer}`;
         setAvailableVersion(remoteVer);
         setUpdateReason('version');
         setStatus('web-reload-needed');
-        if (notifiedSignatureRef.current !== sig) {
-          notifiedSignatureRef.current = sig;
-          setHasUnread(true);
-          setIsBannerDismissed(false);
-        }
       }
     };
 
@@ -333,14 +307,6 @@ export function UpdaterProvider({ children }) {
     window.location.reload();
   }, [isElectron]);
 
-  const dismissBanner = useCallback(() => {
-    setIsBannerDismissed(true);
-  }, []);
-
-  const markAsRead = useCallback(() => {
-    setHasUnread(false);
-  }, []);
-
   const hasUpdate = useMemo(
     () =>
       ['available', 'downloading', 'downloaded', 'web-reload-needed'].includes(
@@ -360,13 +326,9 @@ export function UpdaterProvider({ children }) {
       errorMessage,
       lastCheckedAt,
       hasUpdate,
-      hasUnread,
-      isBannerDismissed,
       checkForUpdates,
       startDownload,
       applyUpdate,
-      dismissBanner,
-      markAsRead,
     }),
     [
       isElectron,
@@ -378,13 +340,9 @@ export function UpdaterProvider({ children }) {
       errorMessage,
       lastCheckedAt,
       hasUpdate,
-      hasUnread,
-      isBannerDismissed,
       checkForUpdates,
       startDownload,
       applyUpdate,
-      dismissBanner,
-      markAsRead,
     ]
   );
 
@@ -400,4 +358,3 @@ export function useUpdater() {
   }
   return ctx;
 }
-

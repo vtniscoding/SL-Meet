@@ -10,13 +10,13 @@ import {
   MeetingsNavIcon,
   MoreHorizontalNavIcon,
   SettingsNavIcon,
+  NotificationBellIcon,
   HistoryNavIcon as History,
 } from '@sl-meet/shared/icons';
 import { supabase } from '@sl-meet/shared';
 import { brandLogo, andyNote } from '../../assets';
 import { TitleBar } from '@sl-meet/shared';
 import {
-  NotificationBellMenu,
   ProfileAvatarMenu,
   useRoomHistory,
   RoomHistoryCard,
@@ -58,6 +58,7 @@ export default function UserDashboard({
   onSignOut,
   onCreateMeeting,
   onJoinMeeting,
+  onOpenSettings,
 }) {
   const [activeTab, setActiveTab] = useState('home');
   const [roomCode, setRoomCode] = useState('');
@@ -211,7 +212,14 @@ export default function UserDashboard({
 
         {/* Top-Right: [Notifications] [Avatar] [Minimize] [Maximize/Restore] [Close] */}
         <div style={{ WebkitAppRegion: 'no-drag' }} className="flex items-center h-full space-x-2.5">
-          <NotificationBellMenu />
+          <button
+            type="button"
+            className="p-1.5 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer outline-none"
+            title="Notifications"
+            aria-label="Notifications"
+          >
+            <NotificationBellIcon className="w-4 h-4" />
+          </button>
 
           {/* Compact Profile Avatar Button */}
           <ProfileAvatarMenu
@@ -276,6 +284,7 @@ export default function UserDashboard({
           <div className="w-full px-1">
             <button
               type="button"
+              onClick={onOpenSettings}
               className="w-full py-2.5 rounded-xl flex flex-col items-center text-slate-500 hover:text-slate-800 hover:bg-white/60 transition-all cursor-pointer"
               title="Settings"
             >

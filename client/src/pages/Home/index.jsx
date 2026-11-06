@@ -7,9 +7,10 @@ import {
   MeetingsNavIcon,
   MoreHorizontalNavIcon,
   SettingsNavIcon,
+  NotificationBellIcon,
 } from '@sl-meet/shared/icons';
 import { TitleBar } from '@sl-meet/shared';
-import { NotificationBellMenu, ProfileAvatarMenu } from '../../features';
+import { ProfileAvatarMenu } from '../../features';
 import InfinityLogoCarousel from './components/InfinityLogoCarousel';
 import WaveRibbonBackground from './components/WaveRibbonBackground';
 import TransparentVideo from './components/TransparentVideo';
@@ -45,6 +46,7 @@ export default function HomePage({
   isCheckingCode,
   handleJoinSubmit,
   userDisplayName,
+  onOpenSettings,
 }) {
   const [isHoveringCard, setIsHoveringCard] = useState(false);
 
@@ -71,7 +73,14 @@ export default function HomePage({
 
         {/* Top-Right: [Notifications] [Avatar / Sign In CTA] [Minimize] [Maximize/Restore] [Close] */}
         <div style={{ WebkitAppRegion: 'no-drag' }} className="flex items-center h-full space-x-2.5">
-          <NotificationBellMenu />
+          <button
+            type="button"
+            className="p-1.5 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer outline-none"
+            title="Notifications"
+            aria-label="Notifications"
+          >
+            <NotificationBellIcon className="w-4 h-4" />
+          </button>
           {user && (
             <ProfileAvatarMenu
               user={user}
@@ -144,6 +153,7 @@ export default function HomePage({
           <div className="w-full px-1">
             <button
               type="button"
+              onClick={onOpenSettings}
               className="w-full py-2.5 rounded-xl flex flex-col items-center text-slate-500 hover:text-slate-800 hover:bg-white/60 transition-all cursor-pointer"
               title="Settings"
             >

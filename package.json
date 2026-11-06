@@ -23,7 +23,7 @@
     "start:server": "npm --prefix server start",
     "dist": "npm --prefix client run electron:build",
     "pack": "npm --prefix client run electron:pack",
-    "release:desktop": "npm --prefix client run electron:publish",
+    "release:desktop": "node scripts/release-desktop.mjs",
     "version:sync": "node scripts/sync-version.mjs",
     "test": "npm --prefix client test && npm --prefix server test && npm --prefix packages/shared test",
     "test:client": "npm --prefix client test",

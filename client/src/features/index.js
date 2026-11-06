@@ -6,11 +6,9 @@ export { default as ProfileAvatarMenu } from './auth/components/ProfileAvatarMen
 export { AuthProvider, useAuth } from './auth/context/AuthContext.jsx';
 
 // ==========================================
-// 1b. System Updater & Notifications Feature
+// 1b. System Updater Feature
 // ==========================================
 export { UpdaterProvider, useUpdater } from './updater/context/UpdaterContext.jsx';
-export { default as NotificationBellMenu } from './updater/components/NotificationBellMenu.jsx';
-export { default as UpdateNotificationBanner } from './updater/components/UpdateNotificationBanner.jsx';
 
 // ==========================================
 // 2. Dashboard Feature

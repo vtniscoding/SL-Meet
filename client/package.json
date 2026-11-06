@@ -13,7 +13,7 @@
     "electron:dev": "concurrently \"vite\" \"wait-on tcp:5173 && electron .\"",
     "electron:build": "vite build && electron-builder",
     "electron:pack": "vite build && electron-builder --dir",
-    "electron:publish": "vite build && electron-builder --publish always"
+    "electron:publish": "node ../scripts/release-desktop.mjs"
   },
   "build": {
     "appId": "com.slmeet.app",

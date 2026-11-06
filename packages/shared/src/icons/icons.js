@@ -33,6 +33,7 @@ import {
   faPhoneSlash,
   faHands,
   faUserGroup,
+  faBell,
 } from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
 
@@ -72,7 +73,6 @@ import {
   Globe,
 
   // Navigation, Drawers & Communication
-  Bell,
   Home,
   Calendar,
   MoreHorizontal,
@@ -483,7 +483,15 @@ export const ProcessingCpuIcon = Cpu;
 export const ServerIcon = Server;
 export const TerminalIcon = Terminal;
 export const RefreshIcon = RefreshCw;
-export const NotificationBellIcon = Bell;
+export const NotificationBellIcon = ({ className = '', size, style, ...props }) => {
+  const customStyle = size ? { width: size, height: size, ...style } : style;
+  return React.createElement(FontAwesomeIcon, {
+    icon: faBell,
+    className,
+    style: customStyle,
+    ...props,
+  });
+};
 export const UpdateSparklesIcon = Sparkles;
 
 /* =========================================================================
