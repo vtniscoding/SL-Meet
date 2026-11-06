@@ -44,3 +44,22 @@ test('server.js exposes /api/version with no-store Cache-Control and server_info
   assert.match(serverSource, /socket\.emit\('server_info',\s*\{\s*version:\s*SERVER_VERSION\s*\}\)/);
 });
 
+test('Electron main processes strictly disable DevTools in packaged production builds', () => {
+  const clientMain = fs.readFileSync(
+    path.join(ROOT_DIR, 'client/electron/main.js'),
+    'utf8'
+  );
+  const adminMain = fs.readFileSync(
+    path.join(ROOT_DIR, 'admin/electron/main.js'),
+    'utf8'
+  );
+
+  assert.match(clientMain, /devTools:\s*!app\.isPackaged/);
+  assert.match(clientMain, /Menu\.setApplicationMenu\(null\)/);
+  assert.match(clientMain, /contents\.closeDevTools\(\)/);
+
+  assert.match(adminMain, /devTools:\s*!app\.isPackaged/);
+  assert.match(adminMain, /Menu\.setApplicationMenu\(null\)/);
+  assert.match(adminMain, /contents\.closeDevTools\(\)/);
+});
+

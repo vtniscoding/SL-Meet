@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session, desktopCapturer, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, session, desktopCapturer, screen, Menu } from 'electron';
 import electronUpdater from 'electron-updater';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -14,6 +14,29 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+
+// Strictly block DevTools and debug shortcuts in packaged production builds
+if (app.isPackaged) {
+  app.on('web-contents-created', (_event, contents) => {
+    contents.on('devtools-opened', () => {
+      contents.closeDevTools();
+    });
+
+    contents.on('before-input-event', (event, input) => {
+      const key = (input.key || '').toLowerCase();
+      const ctrlOrCmd = input.control || input.meta;
+      const isF12 = key === 'f12';
+      const isDevToolsShortcut =
+        ctrlOrCmd && input.shift && ['i', 'j', 'c'].includes(key);
+      const isReloadShortcut =
+        (ctrlOrCmd && key === 'r') || key === 'f5';
+
+      if (isF12 || isDevToolsShortcut || isReloadShortcut) {
+        event.preventDefault();
+      }
+    });
+  });
+}
 
 let mainWindow = null;
 let studioWindow = null;
@@ -108,6 +131,7 @@ function createStudioWindow(initialHash = '#admin') {
       contextIsolation: true,
       webSecurity: true,
       backgroundThrottling: false,
+      devTools: !app.isPackaged,
     },
   });
 
@@ -166,6 +190,7 @@ function createWindow() {
       contextIsolation: true,
       webSecurity: true,
       backgroundThrottling: false,
+      devTools: !app.isPackaged,
     },
   });
 
@@ -210,6 +235,12 @@ function createWindow() {
           alwaysOnTop: true,
           backgroundColor: '#202124',
           title: 'AI Hand Motion',
+          webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+            webSecurity: true,
+            devTools: !app.isPackaged,
+          },
         },
       };
     }
@@ -251,6 +282,10 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  if (app.isPackaged) {
+    Menu.setApplicationMenu(null);
+  }
+
   // Automatic media permission grants for WebRTC camera and microphone
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
     const allowed = ['media', 'mediaKeySystem', 'display-capture', 'notifications'];

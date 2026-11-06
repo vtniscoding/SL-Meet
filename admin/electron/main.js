@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -6,6 +6,25 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+
+if (app.isPackaged) {
+  app.on('web-contents-created', (_event, contents) => {
+    contents.on('devtools-opened', () => {
+      contents.closeDevTools();
+    });
+
+    contents.on('before-input-event', (event, input) => {
+      const key = (input.key || '').toLowerCase();
+      const ctrlOrCmd = input.control || input.meta;
+      const isF12 = key === 'f12';
+      const isDevToolsShortcut =
+        ctrlOrCmd && input.shift && ['i', 'j', 'c'].includes(key);
+      if (isF12 || isDevToolsShortcut) {
+        event.preventDefault();
+      }
+    });
+  });
+}
 
 let mainWindow = null;
 
@@ -26,6 +45,7 @@ function createWindow() {
       contextIsolation: true,
       webSecurity: true,
       backgroundThrottling: false,
+      devTools: !app.isPackaged,
     },
   });
 
@@ -84,6 +104,9 @@ ipcMain.handle('window-is-maximized', (event) => {
 });
 
 app.whenReady().then(() => {
+  if (app.isPackaged) {
+    Menu.setApplicationMenu(null);
+  }
   createWindow();
 
   app.on('activate', () => {

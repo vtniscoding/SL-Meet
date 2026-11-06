@@ -1,6 +1,6 @@
 {
   "name": "sl-meet",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "private": true,
   "description": "SLMeet: Real-time Sign Language & AI-powered Meeting App using Electron, React, Vite, Tailwind CSS, MediaPipe, and Render Socket Service",
   "workspaces": [
