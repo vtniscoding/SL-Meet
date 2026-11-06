@@ -26,5 +26,9 @@ export const HAND_MOTION_CHANNELS = {
 export const APP_CHANNELS = {
   VERSION: 'app-version',
   OPEN_TRAINING_MONITOR: 'open-training-monitor',
+  CHECK_FOR_UPDATES: 'app-check-for-updates',
+  DOWNLOAD_UPDATE: 'app-download-update',
+  INSTALL_UPDATE: 'app-install-update',
+  UPDATE_STATUS: 'app-update-status',
 };
 

@@ -3,6 +3,14 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Expose safe IPC capabilities to the React Renderer
 contextBridge.exposeInMainWorld('electronAPI', {
   getAppVersion: () => ipcRenderer.invoke('app-version'),
+  checkForUpdates: () => ipcRenderer.invoke('app-check-for-updates'),
+  downloadUpdate: () => ipcRenderer.invoke('app-download-update'),
+  installUpdate: () => ipcRenderer.invoke('app-install-update'),
+  onUpdateStatus: (callback) => {
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on('app-update-status', handler);
+    return () => ipcRenderer.removeListener('app-update-status', handler);
+  },
   isElectron: true,
   minimize: () => ipcRenderer.send('window-minimize'),
   toggleMaximize: () => ipcRenderer.send('window-maximize-toggle'),

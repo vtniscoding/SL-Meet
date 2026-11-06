@@ -1,7 +1,14 @@
 import { app, BrowserWindow, ipcMain, session, desktopCapturer, screen } from 'electron';
+import electronUpdater from 'electron-updater';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+
+const { autoUpdater } = electronUpdater;
+
+// Configure native NSIS auto-updater: notify first, download only when user clicks Update
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = true;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,6 +21,61 @@ let handMotionWindow = null;
 let isPipMode = false;
 let prePipBounds = null;
 let prePipWasMaximized = false;
+let updateCheckInterval = null;
+
+function broadcastUpdateStatus(payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('app-update-status', payload);
+  }
+  if (studioWindow && !studioWindow.isDestroyed()) {
+    studioWindow.webContents.send('app-update-status', payload);
+  }
+}
+
+autoUpdater.on('checking-for-update', () => {
+  broadcastUpdateStatus({ status: 'checking' });
+});
+
+autoUpdater.on('update-available', (info) => {
+  broadcastUpdateStatus({
+    status: 'available',
+    version: info?.version || null,
+    releaseDate: info?.releaseDate || null,
+    releaseNotes: typeof info?.releaseNotes === 'string' ? info.releaseNotes : null,
+  });
+});
+
+autoUpdater.on('update-not-available', (info) => {
+  broadcastUpdateStatus({
+    status: 'not-available',
+    version: info?.version || app.getVersion(),
+  });
+});
+
+autoUpdater.on('download-progress', (progress) => {
+  broadcastUpdateStatus({
+    status: 'downloading',
+    percent: Math.round(progress?.percent || 0),
+    bytesPerSecond: progress?.bytesPerSecond || 0,
+    transferred: progress?.transferred || 0,
+    total: progress?.total || 0,
+  });
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+  broadcastUpdateStatus({
+    status: 'downloaded',
+    version: info?.version || null,
+  });
+});
+
+autoUpdater.on('error', (err) => {
+  console.warn('[AutoUpdater] Error:', err?.message || err);
+  broadcastUpdateStatus({
+    status: 'error',
+    message: err?.message || 'Unable to check for updates.',
+  });
+});
 
 function createStudioWindow(initialHash = '#admin') {
   if (studioWindow && !studioWindow.isDestroyed()) {
@@ -221,6 +283,24 @@ app.whenReady().then(() => {
 
   createWindow();
 
+  // Automatically check GitHub Releases for updates in packaged production builds
+  if (app.isPackaged) {
+    setTimeout(() => {
+      autoUpdater.checkForUpdates().catch((err) => {
+        console.warn('[AutoUpdater] Startup check warning:', err?.message || err);
+      });
+    }, 5000);
+
+    updateCheckInterval = setInterval(
+      () => {
+        autoUpdater.checkForUpdates().catch((err) => {
+          console.warn('[AutoUpdater] Periodic check warning:', err?.message || err);
+        });
+      },
+      4 * 60 * 60 * 1000
+    );
+  }
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -229,6 +309,10 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  if (updateCheckInterval) {
+    clearInterval(updateCheckInterval);
+    updateCheckInterval = null;
+  }
   if (process.platform !== 'darwin') {
     app.quit();
   }
@@ -236,6 +320,58 @@ app.on('window-all-closed', () => {
 
 // IPC Handler for System / Desktop integrations
 ipcMain.handle('app-version', () => app.getVersion());
+
+ipcMain.handle('app-check-for-updates', async () => {
+  if (!app.isPackaged) {
+    const devPayload = { status: 'dev-mode', version: app.getVersion() };
+    broadcastUpdateStatus(devPayload);
+    return devPayload;
+  }
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    return {
+      status: 'checked',
+      version: result?.updateInfo?.version || app.getVersion(),
+    };
+  } catch (err) {
+    return {
+      status: 'error',
+      message: err?.message || 'Unable to check for updates.',
+    };
+  }
+});
+
+ipcMain.handle('app-download-update', async () => {
+  if (!app.isPackaged) {
+    return { status: 'dev-mode' };
+  }
+  try {
+    await autoUpdater.downloadUpdate();
+    return { status: 'downloading' };
+  } catch (err) {
+    const message = err?.message || 'Failed to download update.';
+    broadcastUpdateStatus({ status: 'error', message });
+    return { status: 'error', message };
+  }
+});
+
+ipcMain.handle('app-install-update', () => {
+  if (!app.isPackaged) return false;
+
+  if (handMotionWindow && !handMotionWindow.isDestroyed()) {
+    handMotionWindow.destroy();
+    handMotionWindow = null;
+  }
+  if (studioWindow && !studioWindow.isDestroyed()) {
+    studioWindow.destroy();
+    studioWindow = null;
+  }
+
+  setImmediate(() => {
+    autoUpdater.quitAndInstall(false, true);
+  });
+  return true;
+});
 
 // Open dedicated Model Training Studio window (admin app)
 ipcMain.handle('open-training-monitor', (_event, hash = '#admin') => {

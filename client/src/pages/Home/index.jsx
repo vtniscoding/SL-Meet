@@ -9,7 +9,7 @@ import {
   SettingsNavIcon,
 } from '@sl-meet/shared/icons';
 import { TitleBar } from '@sl-meet/shared';
-import { ProfileAvatarMenu } from '../../features';
+import { NotificationBellMenu, ProfileAvatarMenu } from '../../features';
 import InfinityLogoCarousel from './components/InfinityLogoCarousel';
 import WaveRibbonBackground from './components/WaveRibbonBackground';
 import TransparentVideo from './components/TransparentVideo';
@@ -69,8 +69,9 @@ export default function HomePage({
           />
         </div>
 
-        {/* Top-Right: [Sign In CTA] [Minimize] [Maximize/Restore] [Close] */}
+        {/* Top-Right: [Notifications] [Avatar / Sign In CTA] [Minimize] [Maximize/Restore] [Close] */}
         <div style={{ WebkitAppRegion: 'no-drag' }} className="flex items-center h-full space-x-2.5">
+          <NotificationBellMenu />
           {user && (
             <ProfileAvatarMenu
               user={user}

@@ -1,6 +1,6 @@
 {
   "name": "sl-meet-client",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "SLMeet: Real-time Sign Language & AI-powered Meeting App",
   "author": "SLMeet Team",
   "main": "electron/main.js",
@@ -12,13 +12,22 @@
     "test": "node --test tests/**/*.test.mjs",
     "electron:dev": "concurrently \"vite\" \"wait-on tcp:5173 && electron .\"",
     "electron:build": "vite build && electron-builder",
-    "electron:pack": "vite build && electron-builder --dir"
+    "electron:pack": "vite build && electron-builder --dir",
+    "electron:publish": "vite build && electron-builder --publish always"
   },
   "build": {
     "appId": "com.slmeet.app",
     "productName": "SLMeet",
     "electronVersion": "29.4.6",
     "copyright": "Copyright © 2026 SLMeet",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "vtniscoding",
+        "repo": "SL-Meet",
+        "releaseType": "release"
+      }
+    ],
     "directories": {
       "output": "../release"
     },
@@ -50,7 +59,6 @@
     }
   },
   "dependencies": {
-    "@sl-meet/shared": "*",
     "@fortawesome/fontawesome-svg-core": "^7.3.1",
     "@fortawesome/free-solid-svg-icons": "^7.3.1",
     "@fortawesome/react-fontawesome": "^3.5.0",
@@ -58,7 +66,9 @@
     "@mediapipe/drawing_utils": "^0.3.1675466124",
     "@mediapipe/hands": "^0.4.1675469240",
     "@ricky0123/vad-web": "^0.0.31",
+    "@sl-meet/shared": "*",
     "@supabase/supabase-js": "^2.117.3",
+    "electron-updater": "^6.8.11",
     "lucide-react": "^0.344.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

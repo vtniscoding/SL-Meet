@@ -72,6 +72,7 @@ import {
   Globe,
 
   // Navigation, Drawers & Communication
+  Bell,
   Home,
   Calendar,
   MoreHorizontal,
@@ -482,6 +483,8 @@ export const ProcessingCpuIcon = Cpu;
 export const ServerIcon = Server;
 export const TerminalIcon = Terminal;
 export const RefreshIcon = RefreshCw;
+export const NotificationBellIcon = Bell;
+export const UpdateSparklesIcon = Sparkles;
 
 /* =========================================================================
    5. User, Roles, Moderation & Security
@@ -584,6 +587,8 @@ export const AppIcons = {
   Server: ServerIcon,
   Terminal: TerminalIcon,
   Refresh: RefreshIcon,
+  Notification: NotificationBellIcon,
+  UpdateSparkles: UpdateSparklesIcon,
 
   // Users & Auth
   User: UserAvatarIcon,

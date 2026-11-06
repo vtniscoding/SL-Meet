@@ -1,6 +1,6 @@
 {
   "name": "@sl-meet/shared",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Shared code, design tokens, icons, and services for SL-Meet monorepo",
   "main": "src/index.js",
   "module": "src/index.js",

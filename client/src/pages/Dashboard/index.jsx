@@ -15,7 +15,12 @@ import {
 import { supabase } from '@sl-meet/shared';
 import { brandLogo, andyNote } from '../../assets';
 import { TitleBar } from '@sl-meet/shared';
-import { ProfileAvatarMenu, useRoomHistory, RoomHistoryCard } from '../../features';
+import {
+  NotificationBellMenu,
+  ProfileAvatarMenu,
+  useRoomHistory,
+  RoomHistoryCard,
+} from '../../features';
 
 // Fun Andy Pop Sound (Single pleasant, bubbly cartoon pop via Web Audio API)
 const playAndyPopSound = () => {
@@ -204,8 +209,10 @@ export default function UserDashboard({
           />
         </div>
 
-        {/* Top-Right: [Avatar] [Minimize] [Maximize/Restore] [Close] */}
+        {/* Top-Right: [Notifications] [Avatar] [Minimize] [Maximize/Restore] [Close] */}
         <div style={{ WebkitAppRegion: 'no-drag' }} className="flex items-center h-full space-x-2.5">
+          <NotificationBellMenu />
+
           {/* Compact Profile Avatar Button */}
           <ProfileAvatarMenu
             user={user}

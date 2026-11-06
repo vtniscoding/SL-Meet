@@ -7,6 +7,7 @@ import {
   ErrorBoundary,
   useLocalMedia,
   preloadWhisperModel,
+  UpdateNotificationBanner,
 } from './features';
 import { HomePage, DashboardPage, LobbyPage, RoomPage } from './pages';
 import {
@@ -262,47 +263,56 @@ export default function App() {
   // Render User Dashboard (When authenticated and on dashboard view)
   if (user && currentView === 'dashboard') {
     return (
-      <DashboardPage
-        user={user}
-        profile={profile}
-        onSignOut={handleSignOut}
-        onCreateMeeting={handleCreateNewMeeting}
-        onJoinMeeting={handleJoinMeetingFromDashboard}
-      />
+      <>
+        <DashboardPage
+          user={user}
+          profile={profile}
+          onSignOut={handleSignOut}
+          onCreateMeeting={handleCreateNewMeeting}
+          onJoinMeeting={handleJoinMeetingFromDashboard}
+        />
+        <UpdateNotificationBanner suppressed={false} />
+      </>
     );
   }
 
   // Render Waiting Lobby View
   if (currentView === 'lobby') {
     return (
-      <LobbyPage
-        roomId={activeRoomId}
-        mediaState={mediaState}
-        onJoinMeeting={handleEnterMeetingFromLobby}
-        onBackHome={handleBackHomeFromLobby}
-        initialDisplayName={userDisplayName || profile?.display_name || (user ? user.email?.split('@')[0] : '')}
-        isAuthenticated={!!user}
-        user={user}
-        profile={profile}
-        onSignOut={handleSignOut}
-      />
+      <>
+        <LobbyPage
+          roomId={activeRoomId}
+          mediaState={mediaState}
+          onJoinMeeting={handleEnterMeetingFromLobby}
+          onBackHome={handleBackHomeFromLobby}
+          initialDisplayName={userDisplayName || profile?.display_name || (user ? user.email?.split('@')[0] : '')}
+          isAuthenticated={!!user}
+          user={user}
+          profile={profile}
+          onSignOut={handleSignOut}
+        />
+        <UpdateNotificationBanner suppressed={false} />
+      </>
     );
   }
 
-  // Render Room View with ErrorBoundary protection
+  // Render Room View with ErrorBoundary protection (Updates strictly suppressed mid-call)
   if (currentView === 'room') {
     return (
-      <ErrorBoundary onReset={handleLeaveRoom}>
-        <RoomPage
-          roomId={activeRoomId}
-          onLeaveRoom={handleLeaveRoom}
-          mediaState={mediaState}
-          userName={userDisplayName || (user ? user.email?.split('@')[0] : 'Participant')}
-          currentUser={user}
-          profile={profile}
-          initialRole={userRole}
-        />
-      </ErrorBoundary>
+      <>
+        <ErrorBoundary onReset={handleLeaveRoom}>
+          <RoomPage
+            roomId={activeRoomId}
+            onLeaveRoom={handleLeaveRoom}
+            mediaState={mediaState}
+            userName={userDisplayName || (user ? user.email?.split('@')[0] : 'Participant')}
+            currentUser={user}
+            profile={profile}
+            initialRole={userRole}
+          />
+        </ErrorBoundary>
+        <UpdateNotificationBanner suppressed={true} />
+      </>
     );
   }
 
@@ -329,6 +339,8 @@ export default function App() {
         handleJoinSubmit={handleJoinSubmit}
         userDisplayName={userDisplayName}
       />
+
+      <UpdateNotificationBanner suppressed={false} />
 
       {/* Auth Modal for Sign In / Sign Up */}
       <AuthModal

@@ -1,6 +1,6 @@
 {
   "name": "sl-meet",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "SLMeet: Real-time Sign Language & AI-powered Meeting App using Electron, React, Vite, Tailwind CSS, MediaPipe, and Render Socket Service",
   "workspaces": [
@@ -23,6 +23,8 @@
     "start:server": "npm --prefix server start",
     "dist": "npm --prefix client run electron:build",
     "pack": "npm --prefix client run electron:pack",
+    "release:desktop": "npm --prefix client run electron:publish",
+    "version:sync": "node scripts/sync-version.mjs",
     "test": "npm --prefix client test && npm --prefix server test && npm --prefix packages/shared test",
     "test:client": "npm --prefix client test",
     "test:server": "npm --prefix server test",

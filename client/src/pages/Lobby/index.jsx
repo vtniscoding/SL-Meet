@@ -9,7 +9,11 @@ import {
   ChevronDownIcon,
   CheckmarkIcon,
 } from '@sl-meet/shared/icons';
-import { CommunicationModePicker, ProfileAvatarMenu } from '../../features';
+import {
+  CommunicationModePicker,
+  NotificationBellMenu,
+  ProfileAvatarMenu,
+} from '../../features';
 import { TitleBar } from '@sl-meet/shared';
 
 /**
@@ -238,8 +242,9 @@ export default function WaitingLobby({
           )}
         </div>
 
-        {/* Top-Right: [Avatar Menu] [Window Controls] */}
+        {/* Top-Right: [Notifications] [Avatar Menu] [Window Controls] */}
         <div style={{ WebkitAppRegion: 'no-drag' }} className="flex items-center h-full space-x-2.5">
+          <NotificationBellMenu />
           {user && (
             <ProfileAvatarMenu
               user={user}

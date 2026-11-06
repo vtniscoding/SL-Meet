@@ -13,6 +13,15 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATASET_PATH = path.join(__dirname, 'data', 'dataset.json');
+const SERVER_PKG_PATH = path.join(__dirname, 'package.json');
+
+let SERVER_VERSION = '2.0.0';
+try {
+  const pkgRaw = fs.readFileSync(SERVER_PKG_PATH, 'utf8');
+  SERVER_VERSION = JSON.parse(pkgRaw).version || '2.0.0';
+} catch (err) {
+  console.warn('[Server] Could not read package.json version, using default 2.0.0');
+}
 
 const ADMIN_SECRET = process.env.ADMIN_SECRET;
 if (!ADMIN_SECRET) {
@@ -98,7 +107,16 @@ app.get('/', (req, res) => {
   res.json({
     status: 'ok',
     service: 'SL-Meet Render Socket & Signaling Service',
-    version: '1.0.0',
+    version: SERVER_VERSION,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get('/api/version', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.json({
+    success: true,
+    version: SERVER_VERSION,
     timestamp: new Date().toISOString(),
   });
 });
@@ -261,6 +279,7 @@ function transferHostToNextNonGuest(roomData) {
 
 io.on('connection', (socket) => {
   console.log(`[Socket Connected] Client ID: ${socket.id}`);
+  socket.emit('server_info', { version: SERVER_VERSION });
 
   // Room management
   socket.on('join_room', ({ roomId, userMeta }) => {

@@ -25,7 +25,11 @@ test('IPC: HAND_MOTION_CHANNELS defines hand-motion window control events', () =
   assert.equal(HAND_MOTION_CHANNELS.TOGGLE_PIN, 'hand-motion-toggle-pin');
 });
 
-test('IPC: APP_CHANNELS defines application metadata and monitoring channels', () => {
+test('IPC: APP_CHANNELS defines application metadata, monitoring, and auto-updater channels', () => {
   assert.equal(APP_CHANNELS.VERSION, 'app-version');
   assert.equal(APP_CHANNELS.OPEN_TRAINING_MONITOR, 'open-training-monitor');
+  assert.equal(APP_CHANNELS.CHECK_FOR_UPDATES, 'app-check-for-updates');
+  assert.equal(APP_CHANNELS.DOWNLOAD_UPDATE, 'app-download-update');
+  assert.equal(APP_CHANNELS.INSTALL_UPDATE, 'app-install-update');
+  assert.equal(APP_CHANNELS.UPDATE_STATUS, 'app-update-status');
 });

@@ -18,6 +18,7 @@ export * from './icons/icons.js';
 // Utils
 export * from './utils/supabase.js';
 export * from './utils/sampleDescriptor.js';
+export * from './utils/semver.js';
 
 // API
 export * from './api/client.js';
