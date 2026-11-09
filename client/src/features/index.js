@@ -66,3 +66,4 @@ export * from './room/config/captionConfig.js';
 export * from './room/config/sttConfig.js';
 export * from './room/utils/captionUtils.js';
 export * from './room/utils/exportTranscript.js';
+export * from './room/utils/meetingSound.js';

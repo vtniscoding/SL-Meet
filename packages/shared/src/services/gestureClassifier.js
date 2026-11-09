@@ -1,14 +1,98 @@
+import { FEATURE_FLAGS } from '../constants/featureFlags.js';
+import { globalFaceTracker } from './faceTracker.js';
 import { SOCKET_URL } from './socket.js';
 import { supabase } from '../utils/supabase.js';
 import { smoothMultiHandLandmarks } from './landmarkSmoother.js';
 import {
   isDynamicSample,
   computeDTWDistance,
+  computeDTWBreakdown,
   DTW_MATCH_THRESHOLD,
   LiveDynamicMotionRecognizer,
 } from './dtwClassifier.js';
 
 const liveDtwRecognizer = new LiveDynamicMotionRecognizer();
+
+// Anatomical joint & axis weights for 21-landmark hand pose vectors (63 floats per hand):
+// - Emphasizes fingertips (4, 8, 12, 16, 20) and distal IP/DIP joints (3, 7, 11, 15, 19)
+// - Attenuates stable palm/carpal base joints (0, 1, 5, 9, 13, 17) and noisy monocular Z depth
+// - Normalized so the average squared weight across 63 coordinates is 1.0 (preserving 0.95 / 1.60 thresholds)
+const SINGLE_HAND_COORD_WEIGHTS = (() => {
+  const jointWeights = new Float64Array(21);
+  for (let p = 0; p < 21; p++) {
+    if (p === 4 || p === 8 || p === 12 || p === 16 || p === 20) {
+      jointWeights[p] = 1.28; // Fingertips
+    } else if (p === 3 || p === 7 || p === 11 || p === 15 || p === 19) {
+      jointWeights[p] = 1.14; // Distal joints (IP / DIP)
+    } else if (p === 0 || p === 1 || p === 5 || p === 9 || p === 13 || p === 17) {
+      jointWeights[p] = 0.76; // Wrist & MCP palm base
+    } else {
+      jointWeights[p] = 1.0; // PIP joints
+    }
+  }
+  const axisWeights = [1.08, 1.08, 0.65]; // X, Y image-plane reliable; Z monocular depth attenuated
+  const raw = new Float64Array(63);
+  let sumSq = 0;
+  for (let p = 0; p < 21; p++) {
+    for (let a = 0; a < 3; a++) {
+      const w = jointWeights[p] * axisWeights[a];
+      raw[p * 3 + a] = w;
+      sumSq += w * w;
+    }
+  }
+  const norm = Math.sqrt(sumSq / 63);
+  for (let i = 0; i < 63; i++) {
+    raw[i] = raw[i] / norm;
+  }
+  return raw;
+})();
+
+/**
+ * Computes anatomical fingertip-weighted + relational thumb/finger-crossing distance
+ * between two normalized static hand pose vectors (63D single-hand or 126D two-hand).
+ * Zero database schema changes required — works on existing 63D and 126D vectors.
+ */
+export function computeStaticPoseDistance(vecA, vecB) {
+  if (!Array.isArray(vecA) || !Array.isArray(vecB)) return Infinity;
+  const len = Math.min(vecA.length, vecB.length);
+  if (len < 63) return Infinity;
+
+  let weightedSq = 0;
+  for (let i = 0; i < len; i++) {
+    const w = SINGLE_HAND_COORD_WEIGHTS[i % 63];
+    const diff = (vecA[i] - vecB[i]) * w;
+    weightedSq += diff * diff;
+  }
+
+  // On-the-fly relational fingertip geometry per hand (disambiguates crossed fingers R/U/V and thumb-under-fingers A/S/T/N/M)
+  const handCount = len >= 126 ? 2 : 1;
+  let relSq = 0;
+
+  for (let h = 0; h < handCount; h++) {
+    const b = h * 63;
+    // 1. Index tip (8) to Middle tip (12) relative XY vector (crucial for R crossed vs U parallel vs V spread)
+    const idxMidAx = vecA[b + 8 * 3] - vecA[b + 12 * 3];
+    const idxMidAy = vecA[b + 8 * 3 + 1] - vecA[b + 12 * 3 + 1];
+    const idxMidBx = vecB[b + 8 * 3] - vecB[b + 12 * 3];
+    const idxMidBy = vecB[b + 8 * 3 + 1] - vecB[b + 12 * 3 + 1];
+    const dIdxMidX = idxMidAx - idxMidBx;
+    const dIdxMidY = idxMidAy - idxMidBy;
+    relSq += (dIdxMidX * dIdxMidX + dIdxMidY * dIdxMidY) * 0.45;
+
+    // 2. Thumb tip (4) relative to Index PIP (6), Middle PIP (10), Ring PIP (14) (crucial for A, S, T, N, M, E)
+    for (const pipIdx of [6, 10, 14]) {
+      const tAx = vecA[b + 4 * 3] - vecA[b + pipIdx * 3];
+      const tAy = vecA[b + 4 * 3 + 1] - vecA[b + pipIdx * 3 + 1];
+      const tBx = vecB[b + 4 * 3] - vecB[b + pipIdx * 3];
+      const tBy = vecB[b + 4 * 3 + 1] - vecB[b + pipIdx * 3 + 1];
+      const dx = tAx - tBx;
+      const dy = tAy - tBy;
+      relSq += (dx * dx + dy * dy) * 0.18;
+    }
+  }
+
+  return Math.sqrt(weightedSq * 0.88 + relSq);
+}
 
 const LOCAL_STORAGE_DATASET_KEY = 'sl_meet_asl_dataset_cache';
 
@@ -355,6 +439,7 @@ export function summarizeStaticCapture(rawVectors) {
 /**
  * Checks whether a newly captured static vector or dynamic DTW sequence overlaps closely
  * with an existing sample belonging to a DIFFERENT gesture label.
+ * Enhanced with Location-Aware Face Zone separation detection for dynamic signs.
  */
 export function checkDatasetConflict(candidateVector, targetLabel = '', mode = 'static') {
   if (!candidateVector || !Array.isArray(candidateVector)) return null;
@@ -362,29 +447,68 @@ export function checkDatasetConflict(candidateVector, targetLabel = '', mode = '
 
   let closestConflict = null;
   let minDistance = Infinity;
+  let bestBreakdown = null;
 
   if (mode === 'dynamic') {
+    let closestBaseConflict = null;
+    let minBaseDistance = Infinity;
+    let baseConflictBreakdown = null;
+
     for (const sample of activeDataset) {
       if (!isDynamicSample(sample)) continue;
       if (cleanTarget && (sample.name || '').trim().toLowerCase() === cleanTarget) continue;
 
-      const dist = computeDTWDistance(candidateVector, sample.vector);
-      if (dist < minDistance) {
-        minDistance = dist;
+      const breakdown = computeDTWBreakdown(candidateVector, sample.vector);
+      if (breakdown.totalDistance < minDistance) {
+        minDistance = breakdown.totalDistance;
         closestConflict = sample.name;
+        bestBreakdown = breakdown;
+      }
+      if (breakdown.baseDistance < minBaseDistance) {
+        minBaseDistance = breakdown.baseDistance;
+        closestBaseConflict = sample.name;
+        baseConflictBreakdown = breakdown;
       }
     }
 
     const warnThresh = DTW_MATCH_THRESHOLD * 0.82;
-    if (closestConflict && minDistance < warnThresh) {
+    const isZoneSeparated =
+      bestBreakdown?.comparedFace &&
+      bestBreakdown.baseDistance < warnThresh &&
+      bestBreakdown.faceDistance >= 0.45;
+
+    if (closestConflict && minDistance < warnThresh && !isZoneSeparated) {
       const sim = Math.round(
         Math.min(99, Math.max(50, (1 - minDistance / (DTW_MATCH_THRESHOLD * 1.4)) * 100))
       );
       return {
         hasConflict: true,
+        conflictType: 'full_conflict',
         conflictingLabel: closestConflict,
         distance: parseFloat(minDistance.toFixed(2)),
         similarityPct: sim,
+      };
+    }
+
+    // B4: Check if handshape & trajectory are nearly identical to another class,
+    // but cleanly separated by Face Spatial location (e.g. Chin vs Forehead/Chest)
+    if (
+      closestBaseConflict &&
+      minBaseDistance < warnThresh &&
+      baseConflictBreakdown?.comparedFace &&
+      baseConflictBreakdown.faceDistance >= 0.45
+    ) {
+      const baseSim = Math.round(
+        Math.min(99, Math.max(50, (1 - minBaseDistance / (DTW_MATCH_THRESHOLD * 1.4)) * 100))
+      );
+      return {
+        hasConflict: true,
+        conflictType: 'zone_separated',
+        conflictingLabel: closestBaseConflict,
+        distance: parseFloat(baseConflictBreakdown.totalDistance.toFixed(2)),
+        baseDistance: parseFloat(minBaseDistance.toFixed(2)),
+        faceDistance: parseFloat(baseConflictBreakdown.faceDistance.toFixed(2)),
+        similarityPct: baseSim,
       };
     }
     return null;
@@ -399,13 +523,7 @@ export function checkDatasetConflict(candidateVector, targetLabel = '', mode = '
     if (cleanTarget && (sample.name || '').trim().toLowerCase() === cleanTarget) continue;
     if (Math.abs(sample.vector.length - dim) > 12) continue;
 
-    const len = Math.min(dim, sample.vector.length);
-    let sumSq = 0;
-    for (let i = 0; i < len; i++) {
-      const diff = candidateVector[i] - sample.vector[i];
-      sumSq += diff * diff;
-    }
-    const dist = Math.sqrt(sumSq);
+    const dist = computeStaticPoseDistance(candidateVector, sample.vector);
     if (dist < minDistance) {
       minDistance = dist;
       closestConflict = sample.name;
@@ -421,6 +539,7 @@ export function checkDatasetConflict(candidateVector, targetLabel = '', mode = '
     );
     return {
       hasConflict: true,
+      conflictType: 'full_conflict',
       conflictingLabel: closestConflict,
       distance: parseFloat(minDistance.toFixed(2)),
       similarityPct: sim,
@@ -440,10 +559,15 @@ export function isDatasetEmpty() {
  * @param {Array} multiHandLandmarks - List of landmark arrays for all detected hands
  * @returns {Object} Result { gesture, confidence, distance, closestGesture, mode, topCandidates }
  */
-export function classifyLandmarksWithDataset(multiHandLandmarks) {
+export function classifyLandmarksWithDataset(multiHandLandmarks, activeFaceFrame = null) {
   if (!activeDataset || activeDataset.length === 0) {
     return null;
   }
+
+  const faceFrame =
+    activeFaceFrame ||
+    (FEATURE_FLAGS.FEATURE_FACE ? globalFaceTracker.getActiveFaceFrame() : null);
+
   const dynamicSamples = [];
   const staticSamples = [];
   for (const s of activeDataset) {
@@ -460,7 +584,8 @@ export function classifyLandmarksWithDataset(multiHandLandmarks) {
     const exitDynamicMatch = liveDtwRecognizer.step(
       null,
       normalizeMultiHandLandmarks,
-      dynamicSamples
+      dynamicSamples,
+      faceFrame
     );
     if (exitDynamicMatch && exitDynamicMatch.matched) {
       return {
@@ -474,6 +599,7 @@ export function classifyLandmarksWithDataset(multiHandLandmarks) {
         smoothedLandmarks: [],
         isFastTransition: false,
         maxVelocity: 0,
+        activeFaceFrame: faceFrame,
       };
     }
 
@@ -483,6 +609,7 @@ export function classifyLandmarksWithDataset(multiHandLandmarks) {
       distance: null,
       closestGesture: null,
       topCandidates: [],
+      activeFaceFrame: faceFrame,
     };
   }
 
@@ -494,7 +621,8 @@ export function classifyLandmarksWithDataset(multiHandLandmarks) {
   const dynamicMatch = liveDtwRecognizer.step(
     smoothedMultiHandLandmarks,
     normalizeMultiHandLandmarks,
-    dynamicSamples
+    dynamicSamples,
+    faceFrame
   );
 
   if (dynamicMatch && dynamicMatch.matched) {
@@ -509,6 +637,7 @@ export function classifyLandmarksWithDataset(multiHandLandmarks) {
       smoothedLandmarks: smoothedMultiHandLandmarks,
       isFastTransition,
       maxVelocity,
+      activeFaceFrame: faceFrame,
     };
   }
 
@@ -524,6 +653,7 @@ export function classifyLandmarksWithDataset(multiHandLandmarks) {
       smoothedLandmarks: smoothedMultiHandLandmarks,
       isFastTransition,
       maxVelocity,
+      activeFaceFrame: faceFrame,
     };
   }
 
@@ -538,6 +668,7 @@ export function classifyLandmarksWithDataset(multiHandLandmarks) {
       smoothedLandmarks: smoothedMultiHandLandmarks,
       isFastTransition,
       maxVelocity,
+      activeFaceFrame: faceFrame,
     };
   }
 
@@ -552,6 +683,7 @@ export function classifyLandmarksWithDataset(multiHandLandmarks) {
       smoothedLandmarks: smoothedMultiHandLandmarks,
       isFastTransition,
       maxVelocity,
+      activeFaceFrame: faceFrame,
     };
   }
 
@@ -574,13 +706,7 @@ export function classifyLandmarksWithDataset(multiHandLandmarks) {
       continue;
     }
 
-    const compareLen = Math.min(sampleLen, compareVector.length);
-    let sumSquare = 0;
-    for (let i = 0; i < compareLen; i++) {
-      const diff = compareVector[i] - sample.vector[i];
-      sumSquare += diff * diff;
-    }
-    const distance = Math.sqrt(sumSquare);
+    const distance = computeStaticPoseDistance(compareVector, sample.vector);
     const sampleThreshold = sampleLen >= 126 ? 1.60 : 0.95;
 
     const existing = bestByClass.get(sample.name);
@@ -643,6 +769,7 @@ export function classifyLandmarksWithDataset(multiHandLandmarks) {
         smoothedLandmarks: smoothedMultiHandLandmarks,
         isFastTransition,
         maxVelocity,
+        activeFaceFrame: faceFrame,
       };
     }
 
@@ -662,6 +789,7 @@ export function classifyLandmarksWithDataset(multiHandLandmarks) {
       smoothedLandmarks: smoothedMultiHandLandmarks,
       isFastTransition,
       maxVelocity,
+      activeFaceFrame: faceFrame,
     };
   }
 
@@ -675,5 +803,6 @@ export function classifyLandmarksWithDataset(multiHandLandmarks) {
     smoothedLandmarks: smoothedMultiHandLandmarks,
     isFastTransition,
     maxVelocity,
+    activeFaceFrame: faceFrame,
   };
 }

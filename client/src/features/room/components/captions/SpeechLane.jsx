@@ -35,8 +35,8 @@ export default function SpeechLane({
         lastGroup.texts.push(entry.text);
         lastGroup.isFinal = entry.isFinal;
         lastGroup.latestTimestamp = entry.timestamp;
-        if (entry.avatarColor) lastGroup.avatarColor = entry.avatarColor;
-        if (entry.avatarUrl) lastGroup.avatarUrl = entry.avatarUrl;
+        if (!lastGroup.avatarColor && entry.avatarColor) lastGroup.avatarColor = entry.avatarColor;
+        if (!lastGroup.avatarUrl && entry.avatarUrl) lastGroup.avatarUrl = entry.avatarUrl;
       } else {
         groups.push({
           id: entry.id,

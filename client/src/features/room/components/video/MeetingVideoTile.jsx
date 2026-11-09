@@ -22,6 +22,7 @@ export default function MeetingVideoTile({
   subtitleText,
   captionData,
   onRegisterCanvas,
+  selectedSpeakerDeviceId = '',
 }) {
   const { id, name, isLocal, isCameraOff, isMuted, isSpeaking, isActiveSpeaker, isScreenSharing, stream: tileStream, hasStream } = participant;
   const tileVideoRef = useRef(null);
@@ -44,6 +45,16 @@ export default function MeetingVideoTile({
       });
     }
   }, [activeStream, isCameraOff, isScreenSharing, hasLiveVideo, isLocal, isMuted]);
+
+  // Route remote peer audio to selected speaker / Bluetooth headset
+  useEffect(() => {
+    const videoEl = tileVideoRef.current;
+    if (videoEl && !isLocal && selectedSpeakerDeviceId && typeof videoEl.setSinkId === 'function') {
+      videoEl.setSinkId(selectedSpeakerDeviceId).catch((err) => {
+        console.warn(`[MeetingVideoTile] Failed to setSinkId on peer ${id}:`, err);
+      });
+    }
+  }, [selectedSpeakerDeviceId, isLocal, id]);
 
   // Sync external videoRef for MediaPipe hand tracking if this is local camera tile
   useEffect(() => {

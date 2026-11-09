@@ -8,6 +8,7 @@ export * from './types/types.js';
 
 // Constants
 export * from './constants/roles.js';
+export * from './constants/featureFlags.js';
 
 // Theme
 export * from './theme/colors.js';
@@ -25,6 +26,7 @@ export * from './api/client.js';
 
 // Services
 export * from './services/mediapipe.js';
+export * from './services/faceTracker.js';
 export * from './services/gestureClassifier.js';
 export * from './services/dtwClassifier.js';
 export * from './services/handMotionTracker.js';

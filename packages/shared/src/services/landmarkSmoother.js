@@ -3,7 +3,23 @@
  * 
  * - Eliminates MediaPipe high-frequency micro-jitter using an Adaptive Exponential Moving Average (EMA).
  * - Tracks fingertip motion velocity to detect when hands are transitioning between gestures vs holding steadily.
+ * - Dampens sudden distal bone-length collapse/spikes when fingers cross in front of each other.
+ * - Holds second-hand slot briefly (~150ms / 4 frames) when two hands overlap/cross in front of camera.
  */
+
+// Distal segment parent map: fingertip -> PIP/MCP anchor to detect sudden occlusion bone collapse
+const DISTAL_PARENT_ANCHOR = {
+  3: 2,
+  4: 2,
+  7: 6,
+  8: 6,
+  11: 10,
+  12: 10,
+  15: 14,
+  16: 14,
+  19: 18,
+  20: 18,
+};
 
 export class LandmarkSmoother {
   constructor(alphaBase = 0.55, velocityThreshold = 0.022) {
@@ -59,6 +75,12 @@ export class LandmarkSmoother {
 
     const isTransitioning = this.currentVelocity > this.velocityThreshold;
 
+    // Wrist displacement on this frame (to check if palm is steady while a fingertip snaps due to occlusion)
+    const wristStep = Math.hypot(
+      landmarks[0].x - this.prevLandmarks[0].x,
+      landmarks[0].y - this.prevLandmarks[0].y
+    );
+
     // 2. Adaptive Alpha: smooth more aggressively when steady (low velocity),
     // and track more responsively when moving quickly (high velocity)
     const adaptiveAlpha = Math.min(
@@ -66,15 +88,33 @@ export class LandmarkSmoother {
       Math.max(0.35, this.alphaBase + this.currentVelocity * 4.0)
     );
 
-    // 3. Apply Exponential Moving Average (EMA) to all landmarks
+    // 3. Apply Exponential Moving Average (EMA) to all landmarks with self-occlusion bone damping
     const smoothed = [];
     for (let i = 0; i < landmarks.length; i++) {
       const cur = landmarks[i];
       const prev = this.prevLandmarks[i];
+      let pointAlpha = adaptiveAlpha;
+      let zAlpha = adaptiveAlpha * 0.75; // Slightly stronger damping on noisy monocular depth z
 
-      const sx = prev.x + adaptiveAlpha * (cur.x - prev.x);
-      const sy = prev.y + adaptiveAlpha * (cur.y - prev.y);
-      const sz = (prev.z || 0) + adaptiveAlpha * ((cur.z || 0) - (prev.z || 0));
+      const parentIdx = DISTAL_PARENT_ANCHOR[i];
+      if (parentIdx !== undefined && wristStep < 0.03) {
+        const prevAnchor = this.prevLandmarks[parentIdx];
+        const curAnchor = smoothed[parentIdx] || landmarks[parentIdx];
+        const prevBoneLen = Math.hypot(prev.x - prevAnchor.x, prev.y - prevAnchor.y);
+        const curBoneLen = Math.hypot(cur.x - curAnchor.x, cur.y - curAnchor.y);
+        if (prevBoneLen > 0.012) {
+          const ratio = curBoneLen / prevBoneLen;
+          // If fingertip segment suddenly collapses (< 0.55) or spikes (> 1.55) during finger-over-finger occlusion
+          if (ratio < 0.55 || ratio > 1.55) {
+            pointAlpha = Math.min(pointAlpha, 0.22);
+            zAlpha = 0.15;
+          }
+        }
+      }
+
+      const sx = prev.x + pointAlpha * (cur.x - prev.x);
+      const sy = prev.y + pointAlpha * (cur.y - prev.y);
+      const sz = (prev.z || 0) + zAlpha * ((cur.z || 0) - (prev.z || 0));
 
       const pt = { x: sx, y: sy, z: sz };
       smoothed.push(pt);
@@ -120,10 +160,17 @@ export class LandmarkSmoother {
 const handSlotA = new LandmarkSmoother();
 const handSlotB = new LandmarkSmoother();
 const FAST_TRANSITION_VELOCITY = 0.042;
+const MAX_TWO_HAND_OCCLUSION_HOLD_FRAMES = 4;
+const MAX_TWO_HAND_OCCLUSION_HOLD_MS = 160;
+const INTER_HAND_PROXIMITY_THRESHOLD = 0.25;
+
+let twoHandOcclusionHoldCount = 0;
+let lastTwoHandCloseSeenAt = 0;
 
 /**
  * Smooths all detected hands in multiHandLandmarks array using Nearest-Wrist Slot Matching
  * so MediaPipe array index swaps never blend Left and Right hand coordinates together.
+ * Also holds the occluded second hand for up to 4 frames (~150ms) when one hand crosses in front of the other.
  *
  * @param {Array} multiHandLandmarks - Array of landmark arrays
  * @returns {Object} { smoothedMultiHandLandmarks, isHandMoving, isFastTransition, maxVelocity }
@@ -132,6 +179,8 @@ export function smoothMultiHandLandmarks(multiHandLandmarks) {
   if (!multiHandLandmarks || multiHandLandmarks.length === 0) {
     handSlotA.reset();
     handSlotB.reset();
+    twoHandOcclusionHoldCount = 0;
+    lastTwoHandCloseSeenAt = 0;
     return {
       smoothedMultiHandLandmarks: [],
       isHandMoving: false,
@@ -148,6 +197,7 @@ export function smoothMultiHandLandmarks(multiHandLandmarks) {
     if (!h0) {
       handSlotA.reset();
       handSlotB.reset();
+      twoHandOcclusionHoldCount = 0;
       return {
         smoothedMultiHandLandmarks: [],
         isHandMoving: false,
@@ -161,7 +211,37 @@ export function smoothMultiHandLandmarks(multiHandLandmarks) {
     const useSlotB =
       handSlotB.prevLandmarks && distB < distA && distB < 0.25;
 
+    // B5.2: Check if user was just in a close 2-hand configuration and one hand momentarily occluded the other
+    const canHoldOccludedSecondHand =
+      handSlotA.prevLandmarks &&
+      handSlotB.prevLandmarks &&
+      twoHandOcclusionHoldCount < MAX_TWO_HAND_OCCLUSION_HOLD_FRAMES &&
+      now - lastTwoHandCloseSeenAt <= MAX_TWO_HAND_OCCLUSION_HOLD_MS;
+
     const res = useSlotB ? handSlotB.smooth(h0, now) : handSlotA.smooth(h0, now);
+
+    if (canHoldOccludedSecondHand) {
+      twoHandOcclusionHoldCount += 1;
+      const heldLandmarks = useSlotB
+        ? handSlotA.prevLandmarks.map((p) => ({ ...p }))
+        : handSlotB.prevLandmarks.map((p) => ({ ...p }));
+      const maxVel = Math.max(
+        res.velocity,
+        useSlotB ? handSlotA.currentVelocity * 0.7 : handSlotB.currentVelocity * 0.7
+      );
+
+      return {
+        smoothedMultiHandLandmarks: useSlotB
+          ? [heldLandmarks, res.smoothedLandmarks]
+          : [res.smoothedLandmarks, heldLandmarks],
+        isHandMoving: res.isTransitioning,
+        isFastTransition: maxVel > FAST_TRANSITION_VELOCITY,
+        maxVelocity: parseFloat(maxVel.toFixed(4)),
+        isOcclusionHeld: true,
+      };
+    }
+
+    twoHandOcclusionHoldCount = 0;
     if (useSlotB) {
       handSlotA.reset();
     } else {
@@ -177,6 +257,7 @@ export function smoothMultiHandLandmarks(multiHandLandmarks) {
   }
 
   // Two-hand case: solve 2x2 minimum-cost wrist assignment to prevent cross-hand blending
+  twoHandOcclusionHoldCount = 0;
   let hA = multiHandLandmarks[0];
   let hB = multiHandLandmarks[1];
 
@@ -197,6 +278,19 @@ export function smoothMultiHandLandmarks(multiHandLandmarks) {
   const resA = handSlotA.smooth(hA, now);
   const resB = handSlotB.smooth(hB, now);
   const maxVelocity = Math.max(resA.velocity, resB.velocity);
+
+  // Check if the two hands are close enough that hand-over-hand self-occlusion could occur on the next frame
+  const wristProx = Math.hypot(
+    resA.smoothedLandmarks[0].x - resB.smoothedLandmarks[0].x,
+    resA.smoothedLandmarks[0].y - resB.smoothedLandmarks[0].y
+  );
+  const indexProx = Math.hypot(
+    resA.smoothedLandmarks[8].x - resB.smoothedLandmarks[8].x,
+    resA.smoothedLandmarks[8].y - resB.smoothedLandmarks[8].y
+  );
+  if (Math.min(wristProx, indexProx) < INTER_HAND_PROXIMITY_THRESHOLD) {
+    lastTwoHandCloseSeenAt = now;
+  }
 
   return {
     smoothedMultiHandLandmarks: [resA.smoothedLandmarks, resB.smoothedLandmarks],

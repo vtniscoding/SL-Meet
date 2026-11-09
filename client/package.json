@@ -1,6 +1,6 @@
 {
   "name": "sl-meet-client",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "SLMeet: Real-time Sign Language & AI-powered Meeting App",
   "author": "SLMeet Team",
   "main": "electron/main.js",

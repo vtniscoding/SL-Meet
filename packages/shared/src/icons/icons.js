@@ -220,6 +220,26 @@ export const ChevronDownIcon = ChevronDown;
 export const ChevronUpIcon = ChevronUp;
 export const ViewDropdownIcon = ChevronDown;
 
+export const BlurBackgroundIcon = ({ className = 'w-4 h-4', ...props }) =>
+  React.createElement(
+    'svg',
+    {
+      viewBox: '0 0 24 24',
+      fill: 'currentColor',
+      className,
+      ...props,
+    },
+    React.createElement('circle', { cx: '6', cy: '6', r: '1.75' }),
+    React.createElement('circle', { cx: '12', cy: '6', r: '1.75' }),
+    React.createElement('circle', { cx: '18', cy: '6', r: '1.75' }),
+    React.createElement('circle', { cx: '6', cy: '12', r: '1.75' }),
+    React.createElement('circle', { cx: '12', cy: '12', r: '1.75' }),
+    React.createElement('circle', { cx: '18', cy: '12', r: '1.75' }),
+    React.createElement('circle', { cx: '6', cy: '18', r: '1.75' }),
+    React.createElement('circle', { cx: '12', cy: '18', r: '1.75' }),
+    React.createElement('circle', { cx: '18', cy: '18', r: '1.75' })
+  );
+
 // Zoom-Style Solid / Filled Layout Icons
 export const ZoomSpeakerFillIcon = ({ className = 'w-4 h-4', ...props }) =>
   React.createElement(
@@ -538,6 +558,8 @@ export const AppIcons = {
   MoreOptions: MoreOptionsIcon,
   Checkmark: CheckmarkIcon,
   ChevronDown: ChevronDownIcon,
+  ChevronUp: ChevronUpIcon,
+  BlurBackground: BlurBackgroundIcon,
   ViewDropdown: ViewDropdownIcon,
   ZoomSpeakerFill: ZoomSpeakerFillIcon,
   ZoomGalleryFill: ZoomGalleryFillIcon,

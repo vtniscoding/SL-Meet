@@ -1,6 +1,6 @@
 {
   "name": "sl-meet-admin",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "SLMeet: Model Training, Dataset & AI Vision Monitoring Studio",
   "author": "SLMeet Team",
   "main": "electron/main.js",

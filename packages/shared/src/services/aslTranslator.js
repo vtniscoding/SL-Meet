@@ -288,9 +288,7 @@ export function isAlphabetLetter(token) {
  */
 export function formatFingerspelledWord(letters) {
   if (!Array.isArray(letters) || letters.length === 0) return '';
-  const word = letters.map((l) => String(l).trim()).join('');
-  if (word.length === 1) return word.toUpperCase();
-  return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  return letters.map((l) => String(l).trim().toUpperCase()).join('');
 }
 
 /**

@@ -4,6 +4,8 @@ import {
   subscribeMediaPipeResults,
   drawHandResults,
   classifyGesture,
+  FEATURE_FLAGS,
+  globalFaceTracker,
 } from '@sl-meet/shared';
 
 /**
@@ -145,6 +147,16 @@ export function useHandTrackingWorker({
       ) {
         isProcessingFrameRef.current = true;
         try {
+          if (FEATURE_FLAGS.FEATURE_FACE) {
+            const activeHands = (latestResultsRef.current?.results?.multiHandLandmarks || []).map((lm) => ({
+              wrist: lm[0],
+              indexTip: lm[8],
+            }));
+            const faceFrame = await globalFaceTracker.processFrame(video, activeHands);
+            if (latestResultsRef.current) {
+              latestResultsRef.current.faceFrame = faceFrame;
+            }
+          }
           await hands.send({ image: video });
         } catch (err) {
           // Drop frame cleanly on transient pipeline hiccup
@@ -197,6 +209,15 @@ export function useHandTrackingWorker({
       }
 
       // Gesture classification (runs even on empty landmarks so DTW can finalize end-of-stroke hand drops)
+      const videoEl = hiddenVideoRef.current;
+      const activeHands = (results.multiHandLandmarks || []).map((lm) => ({
+        wrist: lm[0],
+        indexTip: lm[8],
+      }));
+      const activeFaceFrame = FEATURE_FLAGS.FEATURE_FACE
+        ? globalFaceTracker.getActiveFaceFrame(videoEl, activeHands)
+        : null;
+
       const hasHands = Boolean(
         results.multiHandLandmarks && results.multiHandLandmarks.length > 0
       );
@@ -204,7 +225,8 @@ export function useHandTrackingWorker({
         hasHands ? results.multiHandLandmarks[0] : null,
         hasHands ? results.multiHandedness?.[0] : null,
         results.multiHandLandmarks || [],
-        results.multiHandedness || []
+        results.multiHandedness || [],
+        activeFaceFrame
       );
       const detectedGesture = classification.gesture || '';
       const detectedConfidence = classification.confidence || 0;
@@ -222,6 +244,7 @@ export function useHandTrackingWorker({
       // Publish live tracking snapshot for the detached 60fps Hand Motion OS Window
       latestResultsRef.current = {
         results,
+        faceFrame: activeFaceFrame,
         updatedAt: Date.now(),
         gesture: detectedGesture,
         confidence: detectedConfidence,

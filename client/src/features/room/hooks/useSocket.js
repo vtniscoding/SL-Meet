@@ -101,7 +101,7 @@ export function useSocket(initialServerUrl = SOCKET_URL) {
     };
 
     const onSpeechCaptionStream = (data) => {
-      if (data && data.senderId) {
+      if (data && data.senderId && data.senderId !== socket.id) {
         setSpeechCaptions((prev) => ({
           ...prev,
           [data.senderId]: {

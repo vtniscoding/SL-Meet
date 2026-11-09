@@ -8,10 +8,14 @@
  * - Coexists 100% non-destructively alongside static 1D k-NN vectors in `asl_gestures`.
  */
 
+import { FEATURE_FLAGS } from '../constants/featureFlags.js';
+import { extractHandFaceFeatures, classifyAnatomicalZone } from './faceTracker.js';
+
 export const DTW_KEYFRAMES = 24;
 export const DTW_BAND_RADIUS = 7;
 export const DTW_MATCH_THRESHOLD = 1.05;
 export const MIN_DYNAMIC_MOTION_AMPLITUDE = 0.35;
+export const FALLBACK_MISSING_FACE_COST = 0.08;
 
 // Legacy storage feature multipliers (preserved in stored JSON vectors for backward compatibility)
 const W_WRIST_XY = 1.5;
@@ -51,7 +55,7 @@ export function isDynamicSample(sample) {
 /**
  * Extracts raw per-frame ingredients from smoothed MediaPipe landmarks (1 or 2 hands)
  */
-export function extractDynamicFrame(smoothedHands, normalizePoseFn) {
+export function extractDynamicFrame(smoothedHands, normalizePoseFn, activeFaceFrame = null) {
   if (!smoothedHands || smoothedHands.length === 0) return null;
 
   const validHands = smoothedHands.filter((h) => Array.isArray(h) && h.length >= 21);
@@ -86,12 +90,25 @@ export function extractDynamicFrame(smoothedHands, normalizePoseFn) {
 
   const palmScale = Math.max(scaleSum / handCount, 0.05);
 
+  let faceFeatures = null;
+  if (FEATURE_FLAGS.FEATURE_FACE && activeFaceFrame) {
+    faceFeatures = [];
+    for (let h = 0; h < handCount; h++) {
+      const feat = extractHandFaceFeatures(
+        { wrist: wrists[h], indexTip: indexTips[h] },
+        activeFaceFrame
+      );
+      faceFeatures.push(...feat);
+    }
+  }
+
   return {
     handCount,
     pose,
     wrists,
     indexTips,
     palmScale,
+    faceFeatures,
     timestamp: Date.now(),
   };
 }
@@ -206,6 +223,17 @@ export function buildDynamicSequence(rawFrames, targetLen = DTW_KEYFRAMES) {
   const trimmed = consistentFrames.slice(startIdx, endIdx + 1);
   if (trimmed.length < 5) return null;
 
+  // Check if frames contain face-relative spatial features
+  const framesWithFace = consistentFrames.filter(
+    (f) => Array.isArray(f.faceFeatures) && f.faceFeatures.length === dominantHandCount * 6
+  );
+  const faceCoveragePct = Math.round(
+    (framesWithFace.length / Math.max(1, consistentFrames.length)) * 100
+  );
+  const hasFace =
+    FEATURE_FLAGS.FEATURE_FACE &&
+    framesWithFace.length >= Math.ceil(consistentFrames.length * 0.5);
+
   // 3. Linear temporal resampling to exact `targetLen` (24) keyframes
   const resampled = [];
   const srcMax = trimmed.length - 1;
@@ -232,7 +260,17 @@ export function buildDynamicSequence(rawFrames, targetLen = DTW_KEYFRAMES) {
     }));
     const palmScale = lerp(f0.palmScale, f1.palmScale, t);
 
-    resampled.push({ pose, wrists, indexTips, palmScale });
+    let faceFeatures = null;
+    if (hasFace) {
+      faceFeatures = [];
+      const f0Face = f0.faceFeatures || framesWithFace[0].faceFeatures;
+      const f1Face = f1.faceFeatures || framesWithFace[framesWithFace.length - 1].faceFeatures;
+      for (let f = 0; f < dominantHandCount * 6; f++) {
+        faceFeatures.push(parseFloat(lerp(f0Face[f] || 0, f1Face[f] || 0, t).toFixed(4)));
+      }
+    }
+
+    resampled.push({ pose, wrists, indexTips, palmScale, faceFeatures });
   }
 
   // 4. Build origin-anchored trajectory features scaled by mean palm dimension
@@ -293,7 +331,11 @@ export function buildDynamicSequence(rawFrames, targetLen = DTW_KEYFRAMES) {
     }
 
     const roundedPose = cur.pose.map((v) => parseFloat(v.toFixed(4)));
-    sequence.push([...roundedPose, ...trajFeatures]);
+    if (hasFace && cur.faceFeatures) {
+      sequence.push([...roundedPose, ...trajFeatures, ...cur.faceFeatures]);
+    } else {
+      sequence.push([...roundedPose, ...trajFeatures]);
+    }
   }
 
   motionAmplitude = parseFloat((motionAmplitude / dominantHandCount).toFixed(3));
@@ -302,10 +344,64 @@ export function buildDynamicSequence(rawFrames, targetLen = DTW_KEYFRAMES) {
   const amplitudeScore = clamp((motionAmplitude / 0.85) * 50, 10, 50);
   const qualityScore = Math.round(clamp(frameCoverageScore + amplitudeScore, 25, 99));
 
+  // Compute dominant anatomical face zone & mean index-tip (u, v) when face features exist
+  let dominantZone = null;
+  let meanIndexUV = null;
+
+  if (framesWithFace.length > 0) {
+    const zoneCounts = {};
+    let sumU = 0;
+    let sumV = 0;
+    let uvCount = 0;
+
+    const sourceFrames = hasFace ? resampled : framesWithFace;
+    for (const f of sourceFrames) {
+      const ff = f.faceFeatures;
+      if (!Array.isArray(ff) || ff.length < 6) continue;
+      // For 2-hand gestures, use the higher/closer hand to face (smaller distNose at index 5 vs 11)
+      let idxU = ff[3];
+      let idxV = ff[4];
+      if (dominantHandCount === 2 && ff.length >= 12) {
+        const dist0 = ff[5];
+        const dist1 = ff[11];
+        if (dist1 < dist0) {
+          idxU = ff[9];
+          idxV = ff[10];
+        }
+      }
+      sumU += idxU;
+      sumV += idxV;
+      uvCount += 1;
+
+      const z = classifyAnatomicalZone(idxV);
+      zoneCounts[z] = (zoneCounts[z] || 0) + 1;
+    }
+
+    if (uvCount > 0) {
+      const meanU = parseFloat((sumU / uvCount).toFixed(3));
+      const meanV = parseFloat((sumV / uvCount).toFixed(3));
+      meanIndexUV = {
+        u: Object.is(meanU, -0) ? 0 : meanU,
+        v: Object.is(meanV, -0) ? 0 : meanV,
+      };
+      const zones = Object.keys(zoneCounts);
+      if (zones.length > 0) {
+        dominantZone = zones.reduce((a, b) => (zoneCounts[a] >= zoneCounts[b] ? a : b));
+      } else {
+        dominantZone = classifyAnatomicalZone(meanIndexUV.v);
+      }
+    }
+  }
+
   return {
     sequence,
     handCount: dominantHandCount,
     featureDim: sequence[0]?.length || 0,
+    featureVersion: hasFace ? 2 : 1,
+    hasFace,
+    faceCoveragePct,
+    dominantZone,
+    meanIndexUV,
     keptFrames: trimmed.length,
     motionAmplitude,
     qualityScore,
@@ -326,7 +422,11 @@ export function canonicalizeDynamicSequence(seq, targetLen = DTW_KEYFRAMES) {
   const dim = seq[0].length;
   const handCount = dim >= 130 ? 2 : 1;
   const poseDim = handCount === 2 ? 126 : 63;
-  if (dim < poseDim + handCount * 7) return null;
+  const trajDim = handCount * 7;
+  const faceDim = handCount * 6;
+  if (dim < poseDim + trajDim) return null;
+
+  const hasFaceFeatures = dim >= poseDim + trajDim + faceDim;
 
   // 1. Decode un-weighted trajectory points per frame
   const decoded = seq.map((row) => {
@@ -342,7 +442,10 @@ export function canonicalizeDynamicSequence(seq, targetLen = DTW_KEYFRAMES) {
         iy: row[base + 4] / W_INDEX_XY,
       });
     }
-    return { pose, hands };
+    const face = hasFaceFeatures
+      ? row.slice(poseDim + trajDim, poseDim + trajDim + faceDim)
+      : null;
+    return { pose, hands, face };
   });
 
   // 2. Strip any leading or trailing stationary hold plateaus (e.g. holding finger still after 'Z')
@@ -389,7 +492,16 @@ export function canonicalizeDynamicSequence(seq, targetLen = DTW_KEYFRAMES) {
         iy: lerp(a.hands[h].iy, b.hands[h].iy, t),
       });
     }
-    resampled.push({ pose, hands });
+
+    let face = null;
+    if (hasFaceFeatures && a.face && b.face) {
+      face = new Float64Array(faceDim);
+      for (let f = 0; f < faceDim; f++) {
+        face[f] = lerp(a.face[f] || 0, b.face[f] || 0, t);
+      }
+    }
+
+    resampled.push({ pose, hands, face });
   }
 
   // 4. Re-anchor origin at keyframe 0 and compute independent wrist & fingertip spans
@@ -467,24 +579,38 @@ export function canonicalizeDynamicSequence(seq, targetLen = DTW_KEYFRAMES) {
     frames.push({
       pose: resampled[k].pose,
       traj,
+      face: resampled[k].face,
     });
   }
 
-  const canonical = { handCount, poseDim, frames };
+  const canonical = {
+    handCount,
+    poseDim,
+    hasFaceFeatures,
+    faceDim: hasFaceFeatures ? faceDim : 0,
+    featureVersion: hasFaceFeatures ? 2 : 1,
+    frames,
+  };
   canonicalCache.set(seq, canonical);
   return canonical;
 }
 
 /**
- * Computes Sakoe-Chiba banded DTW distance between two 2D keyframe sequences
- * using balanced Handshape Pose + Scale-Invariant Trajectory costs.
+ * Computes Sakoe-Chiba banded DTW breakdown (total, base pose+trajectory, and face distance)
+ * between two 2D keyframe sequences.
  */
-export function computeDTWDistance(seqA, seqB, bandRadius = DTW_BAND_RADIUS) {
+export function computeDTWBreakdown(seqA, seqB, bandRadius = DTW_BAND_RADIUS) {
   const canA = canonicalizeDynamicSequence(seqA);
   const canB = canonicalizeDynamicSequence(seqB);
 
   if (!canA || !canB || canA.handCount !== canB.handCount) {
-    return Infinity;
+    return {
+      totalDistance: Infinity,
+      baseDistance: Infinity,
+      faceDistance: 0,
+      comparedFace: false,
+      missingFacePenalty: 0,
+    };
   }
 
   const handCount = canA.handCount;
@@ -493,14 +619,36 @@ export function computeDTWDistance(seqA, seqB, bandRadius = DTW_BAND_RADIUS) {
   const poseScale = Math.sqrt(handCount);
   const trajScale = Math.sqrt(handCount * 2.5);
 
+  const compareFace =
+    FEATURE_FLAGS.FEATURE_FACE &&
+    canA.hasFaceFeatures &&
+    canB.hasFaceFeatures &&
+    canA.featureVersion === 2 &&
+    canB.featureVersion === 2;
+
+  // B1: When FEATURE_FACE is ON and one sequence has v2 face features while the other is legacy v1,
+  // apply a small neutral fallback offset so legacy v1 samples do not get a 0.0 face cost advantage
+  const hasAsymmetricFace =
+    FEATURE_FLAGS.FEATURE_FACE &&
+    ((canA.hasFaceFeatures && !canB.hasFaceFeatures) ||
+      (!canA.hasFaceFeatures && canB.hasFaceFeatures));
+  const missingFacePenalty = hasAsymmetricFace
+    ? FALLBACK_MISSING_FACE_COST * FEATURE_FLAGS.FACE_WEIGHT
+    : 0;
+
+  const faceDim = canA.faceDim || canB.faceDim || handCount * 6;
+  const faceScale = Math.sqrt(faceDim || 1);
+
   const n = canA.frames.length;
   const m = canB.frames.length;
   const band = Math.max(bandRadius, Math.abs(n - m) + 2);
 
   const dp = Array.from({ length: n }, () => new Float64Array(m).fill(Infinity));
+  const dpBase = Array.from({ length: n }, () => new Float64Array(m).fill(Infinity));
+  const dpFace = Array.from({ length: n }, () => new Float64Array(m).fill(0));
   const steps = Array.from({ length: n }, () => new Float64Array(m).fill(1));
 
-  const frameCost = (i, j) => {
+  const frameCostParts = (i, j) => {
     const fA = canA.frames[i];
     const fB = canB.frames[j];
 
@@ -518,10 +666,29 @@ export function computeDTWDistance(seqA, seqB, bandRadius = DTW_BAND_RADIUS) {
     }
     const trajDist = Math.sqrt(trajSq) / trajScale;
 
-    let cost = COST_WEIGHT_POSE * poseDist + COST_WEIGHT_TRAJ * trajDist;
-    if (i === 0 && j === 0) cost *= 1.25;
-    else if (i === n - 1 && j === m - 1) cost *= 1.35;
-    return cost;
+    let baseCost = COST_WEIGHT_POSE * poseDist + COST_WEIGHT_TRAJ * trajDist;
+    let faceRaw = 0;
+    let faceWeighted = missingFacePenalty;
+
+    if (compareFace && fA.face && fB.face) {
+      let faceSq = 0;
+      for (let f = 0; f < faceDim; f++) {
+        const diff = fA.face[f] - fB.face[f];
+        faceSq += diff * diff;
+      }
+      faceRaw = Math.sqrt(faceSq) / faceScale;
+      faceWeighted = (FEATURE_FLAGS.FACE_WEIGHT * 0.55) * faceRaw;
+    }
+
+    let mult = 1.0;
+    if (i === 0 && j === 0) mult = 1.25;
+    else if (i === n - 1 && j === m - 1) mult = 1.35;
+
+    return {
+      total: (baseCost + faceWeighted) * mult,
+      base: baseCost * mult,
+      face: faceRaw * mult,
+    };
   };
 
   for (let i = 0; i < n; i++) {
@@ -529,32 +696,44 @@ export function computeDTWDistance(seqA, seqB, bandRadius = DTW_BAND_RADIUS) {
     const jEnd = Math.min(m - 1, i + band);
 
     for (let j = jStart; j <= jEnd; j++) {
-      const cost = frameCost(i, j);
+      const parts = frameCostParts(i, j);
       if (i === 0 && j === 0) {
-        dp[0][0] = cost * 1.25;
+        dp[0][0] = parts.total * 1.25;
+        dpBase[0][0] = parts.base * 1.25;
+        dpFace[0][0] = parts.face * 1.25;
         steps[0][0] = 1.25;
         continue;
       }
 
       let prevCost = Infinity;
+      let prevBase = Infinity;
+      let prevFace = 0;
       let prevWeight = 1;
 
       if (i > 0 && dp[i - 1][j] < prevCost) {
         prevCost = dp[i - 1][j];
+        prevBase = dpBase[i - 1][j];
+        prevFace = dpFace[i - 1][j];
         prevWeight = steps[i - 1][j];
       }
       if (j > 0 && dp[i][j - 1] < prevCost) {
         prevCost = dp[i][j - 1];
+        prevBase = dpBase[i][j - 1];
+        prevFace = dpFace[i][j - 1];
         prevWeight = steps[i][j - 1];
       }
       if (i > 0 && j > 0 && dp[i - 1][j - 1] <= prevCost) {
         prevCost = dp[i - 1][j - 1];
+        prevBase = dpBase[i - 1][j - 1];
+        prevFace = dpFace[i - 1][j - 1];
         prevWeight = steps[i - 1][j - 1];
       }
 
       if (prevCost < Infinity) {
         const w = i === n - 1 && j === m - 1 ? 1.35 : 1.0;
-        dp[i][j] = prevCost + cost;
+        dp[i][j] = prevCost + parts.total;
+        dpBase[i][j] = prevBase + parts.base;
+        dpFace[i][j] = prevFace + parts.face;
         steps[i][j] = prevWeight + w;
       }
     }
@@ -562,7 +741,31 @@ export function computeDTWDistance(seqA, seqB, bandRadius = DTW_BAND_RADIUS) {
 
   const finalCost = dp[n - 1][m - 1];
   const finalSteps = steps[n - 1][m - 1] || n + m;
-  return finalCost < Infinity ? finalCost / finalSteps : Infinity;
+  if (!(finalCost < Infinity)) {
+    return {
+      totalDistance: Infinity,
+      baseDistance: Infinity,
+      faceDistance: 0,
+      comparedFace: false,
+      missingFacePenalty: 0,
+    };
+  }
+
+  return {
+    totalDistance: finalCost / finalSteps,
+    baseDistance: dpBase[n - 1][m - 1] / finalSteps,
+    faceDistance: compareFace ? dpFace[n - 1][m - 1] / finalSteps : 0,
+    comparedFace: compareFace,
+    missingFacePenalty,
+  };
+}
+
+/**
+ * Computes Sakoe-Chiba banded DTW distance between two 2D keyframe sequences
+ * using balanced Handshape Pose + Scale-Invariant Trajectory + Face Spatial costs.
+ */
+export function computeDTWDistance(seqA, seqB, bandRadius = DTW_BAND_RADIUS) {
+  return computeDTWBreakdown(seqA, seqB, bandRadius).totalDistance;
 }
 
 /**
@@ -573,10 +776,30 @@ export function matchDynamicSequence(candidateSeq, dynamicSamples) {
     return null;
   }
 
+  const canCandidate = canonicalizeDynamicSequence(candidateSeq);
+  const preferV2 = Boolean(FEATURE_FLAGS.FEATURE_FACE && canCandidate?.hasFaceFeatures);
+
+  // Track which labels have at least one v2 sample so mixed v1/v2 labels prefer v2 when Face is ON
+  const labelsWithV2 = new Set();
+  if (preferV2) {
+    for (const sample of dynamicSamples) {
+      if (!isDynamicSample(sample)) continue;
+      const canS = canonicalizeDynamicSequence(sample.vector);
+      if (canS?.hasFaceFeatures && canS.featureVersion === 2) {
+        labelsWithV2.add(sample.name);
+      }
+    }
+  }
+
   const bestByClass = new Map();
 
   for (const sample of dynamicSamples) {
     if (!isDynamicSample(sample)) continue;
+    if (preferV2 && labelsWithV2.has(sample.name)) {
+      const canS = canonicalizeDynamicSequence(sample.vector);
+      if (!canS?.hasFaceFeatures) continue;
+    }
+
     const dist = computeDTWDistance(candidateSeq, sample.vector);
     if (!Number.isFinite(dist)) continue;
 
@@ -733,7 +956,7 @@ export class LiveDynamicMotionRecognizer {
   /**
    * Processes one live frame (or null when hand leaves camera view) and returns a dynamic match
    */
-  step(smoothedHands, normalizePoseFn, dynamicSamples) {
+  step(smoothedHands, normalizePoseFn, dynamicSamples, activeFaceFrame = null) {
     const now = Date.now();
 
     // 1. Drain latched dynamic detection burst even if hand just lowered out of view
@@ -783,7 +1006,7 @@ export class LiveDynamicMotionRecognizer {
     }
     this.lastSeenAt = now;
 
-    const frameItem = extractDynamicFrame(smoothedHands, normalizePoseFn);
+    const frameItem = extractDynamicFrame(smoothedHands, normalizePoseFn, activeFaceFrame);
     if (!frameItem) return null;
 
     const prevFrame = this.buffer.length > 0 ? this.buffer[this.buffer.length - 1] : null;

@@ -158,6 +158,28 @@ export default function RecordingDeck({
                   : 'Single-Hand 63D'}
               </span>
 
+              {capturedPayload.featureVersion === 2 && (
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-amber-950/70 text-amber-300 border-amber-500/30">
+                  + Face Spatial
+                  {capturedPayload.dominantZone
+                    ? ` • ${capturedPayload.dominantZone.toUpperCase()}`
+                    : ''}
+                  {typeof capturedPayload.faceCoveragePct === 'number'
+                    ? ` (${capturedPayload.faceCoveragePct}%)`
+                    : ''}
+                </span>
+              )}
+
+              {capturedPayload.mode === 'dynamic' &&
+                capturedPayload.featureVersion === 1 &&
+                typeof capturedPayload.faceCoveragePct === 'number' &&
+                capturedPayload.faceCoveragePct > 0 &&
+                capturedPayload.faceCoveragePct < 50 && (
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-rose-950/70 text-rose-300 border-rose-500/40">
+                    Low Face Coverage ({capturedPayload.faceCoveragePct}% — Saved as v1)
+                  </span>
+                )}
+
               <span
                 className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
                   capturedPayload.qualityScore >= 80
@@ -188,7 +210,20 @@ export default function RecordingDeck({
             </button>
           </div>
 
-          {conflictInfo?.hasConflict && (
+          {conflictInfo?.hasConflict && conflictInfo.conflictType === 'zone_separated' && (
+            <div className="flex items-start space-x-2 bg-sky-950/50 border border-[#5CA0F2]/40 text-sky-200 px-3 py-2 rounded-lg text-[11px]">
+              <AlertWarningIcon className="w-4 h-4 text-[#5CA0F2] shrink-0 mt-0.5" />
+              <span>
+                <strong>Location-Separated Pair:</strong> Handshape & motion resemble{' '}
+                <strong className="text-white">"{conflictInfo.conflictingLabel}"</strong>{' '}
+                (base dist: {conflictInfo.baseDistance}), but clearly separated by{' '}
+                <strong className="text-amber-300">Face Spatial Zone</strong> (face dist:{' '}
+                {conflictInfo.faceDistance}, total dist: {conflictInfo.distance}).
+              </span>
+            </div>
+          )}
+
+          {conflictInfo?.hasConflict && conflictInfo.conflictType !== 'zone_separated' && (
             <div className="flex items-start space-x-2 bg-amber-950/50 border border-amber-500/40 text-amber-200 px-3 py-2 rounded-lg text-[11px]">
               <AlertWarningIcon className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
               <span>

@@ -1,4 +1,6 @@
 import { brandColors, roomColors, statusColors } from '../theme/colors';
+import { FEATURE_FLAGS } from '../constants/featureFlags.js';
+import { globalFaceTracker, classifyAnatomicalZone, projectPointToFaceFrame } from './faceTracker.js';
 
 // Standard MediaPipe 21-keypoint hand skeleton connections
 const HAND_BONE_CONNECTIONS = [
@@ -578,6 +580,101 @@ export class HandMotionCameraTracker {
       ctx.lineTo(br.x, br.y - cornerLen);
       ctx.stroke();
       ctx.restore();
+    }
+
+    // 8. Draw Face Detection Keypoints, Tilt Axis & Anatomical Zone HUD (when FEATURE_FACE is active)
+    if (FEATURE_FLAGS.FEATURE_FACE && videoReady) {
+      const faceFrame =
+        trackingPayload?.faceFrame || globalFaceTracker.getActiveFaceFrame(videoEl);
+      if (faceFrame && Array.isArray(faceFrame.keypointsPixel) && faceFrame.keypointsPixel.length >= 6) {
+        ctx.save();
+        const faceW = faceFrame.width || videoW;
+        const faceH = faceFrame.height || videoH;
+
+        // 8a. Draw 6 BlazeFace keypoints: Right Eye, Left Eye, Nose, Mouth, Right Ear, Left Ear
+        for (let i = 0; i < faceFrame.keypointsPixel.length; i++) {
+          const kp = faceFrame.keypointsPixel[i];
+          const pt = projectPoint(1 - kp.x / faceW, kp.y / faceH);
+          const isNose = i === 2;
+
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, isNose ? 4.5 : 3.2, 0, Math.PI * 2);
+          ctx.fillStyle = isNose ? '#F59E0B' : '#38BDF8';
+          ctx.fill();
+          ctx.lineWidth = 1.2;
+          ctx.strokeStyle = '#FFFFFF';
+          ctx.stroke();
+        }
+
+        // 8b. Draw Tilt-Compensated Axis from Mid-Eye to Mouth
+        const rightEye = faceFrame.keypointsPixel[0];
+        const leftEye = faceFrame.keypointsPixel[1];
+        const mouth = faceFrame.keypointsPixel[3];
+        const midEye = { x: (rightEye.x + leftEye.x) / 2, y: (rightEye.y + leftEye.y) / 2 };
+
+        const midPt = projectPoint(1 - midEye.x / faceW, midEye.y / faceH);
+        const mouthPt = projectPoint(1 - mouth.x / faceW, mouth.y / faceH);
+
+        ctx.beginPath();
+        ctx.setLineDash([3, 3]);
+        ctx.moveTo(midPt.x, midPt.y);
+        ctx.lineTo(mouthPt.x, mouthPt.y);
+        ctx.strokeStyle = '#F59E0B';
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // 8c. If active hand exists, calculate and render relative Zone HUD
+        const activeSlot = activeSlots[0];
+        if (activeSlot && activeSlot.wrist && activeSlot.smoothedLandmarks?.[8]) {
+          const indexTip = activeSlot.smoothedLandmarks[8];
+          // indexTip is in mirrored coordinates mx = 1 - x/W => unmirrored x = (1 - mx) * W
+          const indexPixel = {
+            x: (1 - indexTip.x) * faceW,
+            y: indexTip.y * faceH,
+          };
+          const proj = projectPointToFaceFrame(indexPixel, faceFrame);
+          const zone = classifyAnatomicalZone(proj.v);
+
+          // Draw connector from nose origin to hand index tip
+          const nosePt = projectPoint(1 - faceFrame.origin.x / faceW, faceFrame.origin.y / faceH);
+          const idxCanvasPt = projectPoint(indexTip.x, indexTip.y);
+
+          ctx.beginPath();
+          ctx.setLineDash([2, 4]);
+          ctx.moveTo(nosePt.x, nosePt.y);
+          ctx.lineTo(idxCanvasPt.x, idxCanvasPt.y);
+          ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
+          ctx.lineWidth = 1.2;
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Draw HUD Tag near the face
+          const hudX = clamp(nosePt.x + 14, 12, canvasW - 140);
+          const hudY = clamp(nosePt.y - 12, 24, canvasH - 30);
+          const hudText = `${zone.toUpperCase()} [u:${proj.u > 0 ? '+' : ''}${proj.u.toFixed(2)}, v:${proj.v > 0 ? '+' : ''}${proj.v.toFixed(2)}]`;
+
+          ctx.font = 'bold 10px monospace';
+          const textW = ctx.measureText(hudText).width;
+
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+          ctx.beginPath();
+          if (typeof ctx.roundRect === 'function') {
+            ctx.roundRect(hudX - 4, hudY - 12, textW + 8, 16, 4);
+          } else {
+            ctx.rect(hudX - 4, hudY - 12, textW + 8, 16);
+          }
+          ctx.fill();
+          ctx.strokeStyle = '#38BDF8';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          ctx.fillStyle = '#38BDF8';
+          ctx.fillText(hudText, hudX, hudY);
+        }
+
+        ctx.restore();
+      }
     }
 
     ctx.restore();

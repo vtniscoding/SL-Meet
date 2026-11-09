@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   MicOnIcon as Mic,
   MicOffIcon as MicOff,
@@ -14,13 +14,15 @@ import {
   ChatDrawerIcon as MessageSquare,
   UserGroupIcon as Users,
   HandsIcon as Hands,
+  ChevronUpIcon as ChevronUp,
+  ChevronDownIcon as ChevronDown,
+  Volume2Icon as Volume2,
+  CheckmarkIcon as Check,
 } from '@sl-meet/shared/icons';
 
 /**
  * Semantic Component: Google Meet Style Control Bar
- * Clean borderless controls with 3-Dots Popup Menu in main control bar.
- * Responsive for Windows Split Screen (Snap Assist) down to narrow widths:
- * secondary bar hides on smaller screens, seamlessly transferring People & Chat into 3-dots menu.
+ * Single-row rounded pill bar with simple popover dropdowns for Mic and Camera chevrons.
  */
 export default function MeetingControlBar({
   isMuted,
@@ -52,22 +54,76 @@ export default function MeetingControlBar({
   onTogglePeople,
   onResetPin,
   onLeaveRoom,
+  speakerDevices = [],
+  selectedSpeakerDeviceId = '',
+  onChangeSpeakerDevice,
+  audioDevices = [],
+  selectedAudioDeviceId = '',
+  onChangeAudioDevice,
+  videoDevices = [],
+  selectedVideoDeviceId = '',
+  onChangeVideoDevice,
 }) {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
-  const menuRef = useRef(null);
+  const [showAudioMenu, setShowAudioMenu] = useState(false);
+  const [showCameraMenu, setShowCameraMenu] = useState(false);
 
-  // Close popup menu when clicking outside
+  const menuRef = useRef(null);
+  const audioMenuContainerRef = useRef(null);
+  const cameraMenuContainerRef = useRef(null);
+
+  // Close popup menus when clicking outside or pressing Escape
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (menuRef.current && !menuRef.current.contains(e.target)) {
         setShowMoreMenu(false);
       }
+      if (
+        audioMenuContainerRef.current &&
+        !audioMenuContainerRef.current.contains(e.target)
+      ) {
+        setShowAudioMenu(false);
+      }
+      if (
+        cameraMenuContainerRef.current &&
+        !cameraMenuContainerRef.current.contains(e.target)
+      ) {
+        setShowCameraMenu(false);
+      }
+    };
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setShowMoreMenu(false);
+        setShowAudioMenu(false);
+        setShowCameraMenu(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
 
-  const ccActive = isCaptionsEnabled !== undefined ? isCaptionsEnabled : (userRole === 'signer' ? isSttEnabled : isAiEnabled);
+  const handleToggleAudioMenu = (e) => {
+    e.stopPropagation();
+    setShowAudioMenu((prev) => !prev);
+    setShowCameraMenu(false);
+  };
+
+  const handleToggleCameraMenu = (e) => {
+    e.stopPropagation();
+    setShowCameraMenu((prev) => !prev);
+    setShowAudioMenu(false);
+  };
+
+  const ccActive =
+    isCaptionsEnabled !== undefined
+      ? isCaptionsEnabled
+      : userRole === 'signer'
+      ? isSttEnabled
+      : isAiEnabled;
 
   return (
     <footer className="w-full flex items-center justify-between pt-1 sm:pt-2 z-30 relative select-none">
@@ -85,33 +141,252 @@ export default function MeetingControlBar({
         )}
       </div>
 
-      {/* Main Center Control Bar Container (Media & Call Controls) */}
+      {/* Main Center Control Bar Container (Single-Row Rounded Pill) */}
       <div className="relative bg-[#202124] px-3 sm:px-6 py-2 sm:py-3 rounded-full flex items-center space-x-1.5 sm:space-x-3 shadow-2xl shrink-0">
-        {/* Microphone Toggle Button */}
-        <button
-          onClick={onToggleMic}
-          className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-colors outline-none focus:outline-none focus:ring-0 cursor-pointer ${
-            isMuted
-              ? 'bg-[#EA4335] hover:bg-[#D93025] text-white'
-              : 'bg-[#3C4043] hover:bg-[#474B4F] text-slate-200'
-          }`}
-          title={isMuted ? 'Turn on microphone' : 'Turn off microphone'}
+        {/* Google Meet Style Mic Capsule [Chevron + Toggle] */}
+        <div
+          ref={audioMenuContainerRef}
+          className="relative inline-flex items-center"
         >
-          {isMuted ? <MicOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <Mic className="w-4 h-4 sm:w-5 sm:h-5" />}
-        </button>
+          <div
+            className={`inline-flex items-center rounded-full transition-colors duration-150 ${
+              showAudioMenu
+                ? 'bg-[#3C4043]'
+                : 'bg-[#28292C]/80 hover:bg-[#323438]'
+            }`}
+          >
+            {/* Left Chevron Button: Chevron nhỏ, mờ hướng LÊN (^) / XUỐNG (⌄) khi mở menu */}
+            <button
+              type="button"
+              onClick={handleToggleAudioMenu}
+              className={`h-10 sm:h-12 pl-2 sm:pl-2.5 pr-1 flex items-center justify-center transition-colors rounded-l-full cursor-pointer outline-none focus:outline-none ${
+                showAudioMenu
+                  ? 'text-white'
+                  : 'text-white/40 hover:text-white/80'
+              }`}
+              title="Audio options: select speaker or microphone"
+              aria-label="Audio options"
+              aria-expanded={showAudioMenu}
+            >
+              {showAudioMenu ? (
+                <ChevronDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 transition-transform duration-150" />
+              ) : (
+                <ChevronUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 transition-transform duration-150" />
+              )}
+            </button>
 
-        {/* Camera Toggle Button */}
-        <button
-          onClick={onToggleCamera}
-          className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-colors outline-none focus:outline-none focus:ring-0 cursor-pointer ${
-            isCameraOff
-              ? 'bg-[#EA4335] hover:bg-[#D93025] text-white'
-              : 'bg-[#3C4043] hover:bg-[#474B4F] text-slate-200'
-          }`}
-          title={isCameraOff ? 'Turn on camera' : 'Turn off camera'}
+            {/* Circular Microphone Toggle Button */}
+            <button
+              type="button"
+              onClick={onToggleMic}
+              className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-colors outline-none focus:outline-none focus:ring-0 cursor-pointer ${
+                isMuted
+                  ? 'bg-[#EA4335] hover:bg-[#D93025] text-white'
+                  : 'bg-[#3C4043] hover:bg-[#474B4F] text-slate-200'
+              }`}
+              title={isMuted ? 'Turn on microphone' : 'Turn off microphone'}
+              aria-label={isMuted ? 'Turn on microphone' : 'Turn off microphone'}
+            >
+              {isMuted ? (
+                <MicOff className="w-4 h-4 sm:w-5 sm:h-5" />
+              ) : (
+                <Mic className="w-4 h-4 sm:w-5 sm:h-5" />
+              )}
+            </button>
+          </div>
+
+          {/* Simple Upward Audio Dropdown Popover */}
+          {showAudioMenu && (
+            <div className="absolute left-0 bottom-full mb-3 w-72 sm:w-80 bg-[#1E1F22] border border-white/15 rounded-2xl shadow-2xl p-2.5 z-50 text-slate-200 text-xs animate-in fade-in zoom-in-95 duration-150 space-y-2.5">
+              {/* Section 1: Speakers / Audio Output */}
+              <div>
+                <div className="px-3 py-1 flex items-center space-x-2 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                  <Volume2 className="w-3.5 h-3.5 text-[#8AB4F8]" />
+                  <span>Speakers (Audio Output)</span>
+                </div>
+                <div className="max-h-40 overflow-y-auto py-0.5 custom-scrollbar space-y-0.5">
+                  {speakerDevices && speakerDevices.length > 0 ? (
+                    speakerDevices.map((device, idx) => {
+                      const isSelected =
+                        device.deviceId === selectedSpeakerDeviceId ||
+                        (!selectedSpeakerDeviceId && idx === 0);
+                      return (
+                        <button
+                          key={device.deviceId || idx}
+                          type="button"
+                          onClick={() => {
+                            onChangeSpeakerDevice?.(device.deviceId);
+                            setShowAudioMenu(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs text-left transition-colors cursor-pointer ${
+                            isSelected
+                              ? 'bg-white/15 text-[#8AB4F8] font-semibold'
+                              : 'text-slate-200 hover:text-white hover:bg-white/10'
+                          }`}
+                        >
+                          <span className="truncate pr-2">
+                            {device.label || `Speaker ${idx + 1}`}
+                          </span>
+                          {isSelected && (
+                            <Check className="w-4 h-4 shrink-0 text-[#8AB4F8]" />
+                          )}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="px-3 py-1.5 text-xs text-slate-400 italic">
+                      Default Speaker
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div className="border-t border-white/10" />
+
+              {/* Section 2: Microphone / Audio Input */}
+              <div>
+                <div className="px-3 py-1 flex items-center space-x-2 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                  <Mic className="w-3.5 h-3.5 text-[#8AB4F8]" />
+                  <span>Microphone (Audio Input)</span>
+                </div>
+                <div className="max-h-36 overflow-y-auto py-0.5 custom-scrollbar space-y-0.5">
+                  {audioDevices && audioDevices.length > 0 ? (
+                    audioDevices.map((device, idx) => {
+                      const isSelected =
+                        device.deviceId === selectedAudioDeviceId ||
+                        (!selectedAudioDeviceId && idx === 0);
+                      return (
+                        <button
+                          key={device.deviceId || idx}
+                          type="button"
+                          onClick={() => {
+                            onChangeAudioDevice?.(device.deviceId);
+                            setShowAudioMenu(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs text-left transition-colors cursor-pointer ${
+                            isSelected
+                              ? 'bg-white/15 text-[#8AB4F8] font-semibold'
+                              : 'text-slate-200 hover:text-white hover:bg-white/10'
+                          }`}
+                        >
+                          <span className="truncate pr-2">
+                            {device.label || `Microphone ${idx + 1}`}
+                          </span>
+                          {isSelected && (
+                            <Check className="w-4 h-4 shrink-0 text-[#8AB4F8]" />
+                          )}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="px-3 py-1.5 text-xs text-slate-400 italic">
+                      Default Microphone
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Google Meet Style Camera Capsule [Chevron + Toggle] */}
+        <div
+          ref={cameraMenuContainerRef}
+          className="relative inline-flex items-center"
         >
-          {isCameraOff ? <VideoOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <Video className="w-4 h-4 sm:w-5 sm:h-5" />}
-        </button>
+          <div
+            className={`inline-flex items-center rounded-full transition-colors duration-150 ${
+              showCameraMenu
+                ? 'bg-[#3C4043]'
+                : 'bg-[#28292C]/80 hover:bg-[#323438]'
+            }`}
+          >
+            {/* Left Chevron Button: Chevron nhỏ, mờ hướng LÊN (^) / XUỐNG (⌄) khi mở menu */}
+            <button
+              type="button"
+              onClick={handleToggleCameraMenu}
+              className={`h-10 sm:h-12 pl-2 sm:pl-2.5 pr-1 flex items-center justify-center transition-colors rounded-l-full cursor-pointer outline-none focus:outline-none ${
+                showCameraMenu
+                  ? 'text-white'
+                  : 'text-white/40 hover:text-white/80'
+              }`}
+              title="Camera options: select camera"
+              aria-label="Camera options"
+              aria-expanded={showCameraMenu}
+            >
+              {showCameraMenu ? (
+                <ChevronDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 transition-transform duration-150" />
+              ) : (
+                <ChevronUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 transition-transform duration-150" />
+              )}
+            </button>
+
+            {/* Circular Camera Toggle Button */}
+            <button
+              type="button"
+              onClick={onToggleCamera}
+              className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-colors outline-none focus:outline-none focus:ring-0 cursor-pointer ${
+                isCameraOff
+                  ? 'bg-[#EA4335] hover:bg-[#D93025] text-white'
+                  : 'bg-[#3C4043] hover:bg-[#474B4F] text-slate-200'
+              }`}
+              title={isCameraOff ? 'Turn on camera' : 'Turn off camera'}
+              aria-label={isCameraOff ? 'Turn on camera' : 'Turn off camera'}
+            >
+              {isCameraOff ? (
+                <VideoOff className="w-4 h-4 sm:w-5 sm:h-5" />
+              ) : (
+                <Video className="w-4 h-4 sm:w-5 sm:h-5" />
+              )}
+            </button>
+          </div>
+
+          {/* Simple Upward Camera Dropdown Popover */}
+          {showCameraMenu && (
+            <div className="absolute left-0 bottom-full mb-3 w-72 sm:w-80 bg-[#1E1F22] border border-white/15 rounded-2xl shadow-2xl p-2.5 z-50 text-slate-200 text-xs animate-in fade-in zoom-in-95 duration-150 space-y-1.5">
+              <div className="px-3 py-1 flex items-center space-x-2 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                <Video className="w-3.5 h-3.5 text-[#8AB4F8]" />
+                <span>Camera (Video Input)</span>
+              </div>
+              <div className="max-h-48 overflow-y-auto py-0.5 custom-scrollbar space-y-0.5">
+                {videoDevices && videoDevices.length > 0 ? (
+                  videoDevices.map((device, idx) => {
+                    const isSelected =
+                      device.deviceId === selectedVideoDeviceId ||
+                      (!selectedVideoDeviceId && idx === 0);
+                    return (
+                      <button
+                        key={device.deviceId || idx}
+                        type="button"
+                        onClick={() => {
+                          onChangeVideoDevice?.(device.deviceId);
+                          setShowCameraMenu(false);
+                        }}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs text-left transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-white/15 text-[#8AB4F8] font-semibold'
+                            : 'text-slate-200 hover:text-white hover:bg-white/10'
+                        }`}
+                      >
+                        <span className="truncate pr-2">
+                          {device.label || `Camera ${idx + 1}`}
+                        </span>
+                        {isSelected && (
+                          <Check className="w-4 h-4 shrink-0 text-[#8AB4F8]" />
+                        )}
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="px-3 py-1.5 text-xs text-slate-400 italic">
+                    Default Camera
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Screen Share Toggle Button */}
         <button
@@ -135,15 +410,26 @@ export default function MeetingControlBar({
                 ? 'bg-[#8AB4F8] text-[#202124]'
                 : 'bg-[#3C4043] hover:bg-[#474B4F] text-slate-300'
             }`}
-            title={isHandTrackingEnabled ? 'Turn OFF AI Vision Tracking' : 'Turn ON AI Vision Tracking'}
+            title={
+              isHandTrackingEnabled
+                ? 'Turn OFF AI Vision Tracking'
+                : 'Turn ON AI Vision Tracking'
+            }
           >
-            {isHandTrackingEnabled ? <Eye className="w-4 h-4 sm:w-5 sm:h-5" /> : <EyeOff className="w-4 h-4 sm:w-5 sm:h-5" />}
+            {isHandTrackingEnabled ? (
+              <Eye className="w-4 h-4 sm:w-5 sm:h-5" />
+            ) : (
+              <EyeOff className="w-4 h-4 sm:w-5 sm:h-5" />
+            )}
           </button>
         )}
 
         {/* Universal Single Subtitles (CC) Toggle Button */}
         <button
-          onClick={onToggleCaptions || (userRole === 'signer' ? onToggleStt : onToggleAi)}
+          onClick={
+            onToggleCaptions ||
+            (userRole === 'signer' ? onToggleStt : onToggleAi)
+          }
           className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-colors outline-none focus:outline-none focus:ring-0 cursor-pointer ${
             ccActive
               ? 'bg-[#8AB4F8] text-[#202124]'
@@ -158,7 +444,7 @@ export default function MeetingControlBar({
           )}
         </button>
 
-        {/* 3-Dots More Options Menu Button (Integrated in Main Control Bar) */}
+        {/* 3-Dots More Options Menu Button */}
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setShowMoreMenu((prev) => !prev)}
@@ -170,7 +456,6 @@ export default function MeetingControlBar({
             title="More options"
           >
             <MoreVertical className="w-4 h-4 sm:w-5 sm:h-5" />
-            {/* If secondary bar is hidden on narrow screens and there are unread messages, display an unread dot */}
             {unreadCount > 0 && (
               <span className="md:hidden absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#202124] animate-pulse" />
             )}
@@ -179,9 +464,8 @@ export default function MeetingControlBar({
           {/* Popup Menu */}
           {showMoreMenu && (
             <div className="absolute right-0 bottom-full mb-3 w-64 bg-[#1E1F22] border border-white/15 rounded-xl shadow-2xl p-1.5 z-50 text-slate-200 text-xs animate-in fade-in zoom-in-95 duration-100 space-y-1">
-              {/* Responsive: People & Chat options (visible only when secondary bar is hidden on smaller windows < 768px, seamless without divider) */}
+              {/* Responsive: People & Chat options for small screens */}
               <div className="md:hidden space-y-1">
-                {/* People Option */}
                 <button
                   type="button"
                   onClick={() => {
@@ -219,7 +503,6 @@ export default function MeetingControlBar({
                   )}
                 </button>
 
-                {/* Chat Option */}
                 <button
                   type="button"
                   onClick={() => {
@@ -286,7 +569,6 @@ export default function MeetingControlBar({
                       Sign language support
                     </span>
                   </div>
-                  {/* Clean Mini Toggle Switch */}
                   <div
                     className={`w-8 h-[18px] rounded-full transition-colors duration-200 ease-in-out relative shrink-0 p-[2px] ${
                       isSignLanguageEnabled
@@ -296,7 +578,9 @@ export default function MeetingControlBar({
                   >
                     <div
                       className={`w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200 ease-in-out ${
-                        isSignLanguageEnabled ? 'translate-x-[14px]' : 'translate-x-0'
+                        isSignLanguageEnabled
+                          ? 'translate-x-[14px]'
+                          : 'translate-x-0'
                       }`}
                     />
                   </div>
@@ -319,7 +603,6 @@ export default function MeetingControlBar({
       {/* Right Side Utility: Secondary Mini Control Bar (Hidden on narrow screens < 768px) */}
       <div className="flex-1 min-w-0 flex justify-end items-center">
         <div className="hidden md:flex bg-[#202124] px-2 sm:px-3 py-1 sm:py-1.5 rounded-full items-center space-x-1 sm:space-x-2 shadow-2xl border border-slate-700/40">
-          {/* People / Participants List Drawer Toggle Button */}
           <button
             onClick={onTogglePeople}
             className={`relative w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-colors outline-none focus:outline-none focus:ring-0 cursor-pointer ${
@@ -337,7 +620,6 @@ export default function MeetingControlBar({
             )}
           </button>
 
-          {/* In-Call Text Chat Drawer Toggle Button */}
           <button
             onClick={onToggleChat}
             className={`relative w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-colors outline-none focus:outline-none focus:ring-0 cursor-pointer ${

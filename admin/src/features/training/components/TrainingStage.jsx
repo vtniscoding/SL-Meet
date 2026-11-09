@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { FEATURE_FLAGS, setFeatureFace } from '@sl-meet/shared';
 import {
   CameraOnIcon,
   CameraOffIcon,
@@ -38,6 +39,8 @@ export default function TrainingStage({
   clearTranscript,
   cancelRecordingSession,
 }) {
+  const [featureFaceActive, setFeatureFaceActive] = useState(() => FEATURE_FLAGS.FEATURE_FACE);
+
   return (
     <div
       ref={stageContainerRef}
@@ -185,6 +188,23 @@ export default function TrainingStage({
               >
                 <CaptionsIcon className="w-3.5 h-3.5" />
                 <span>CC</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !featureFaceActive;
+                  setFeatureFace(next);
+                  setFeatureFaceActive(next);
+                }}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border-none outline-none focus:outline-none transition-colors cursor-pointer ${
+                  featureFaceActive
+                    ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40'
+                    : 'bg-[#202124] hover:bg-[#3C4043] text-slate-400 hover:text-slate-200'
+                }`}
+                title="Toggle Face-Relative Spatial Tracking (FEATURE_FACE)"
+              >
+                <span>{featureFaceActive ? 'Face ON' : 'Face OFF'}</span>
               </button>
             </>
           )}

@@ -25,7 +25,7 @@ export default function ParticipantAvatar({
     .trim();
 
   const initial = cleanName ? cleanName.charAt(0).toUpperCase() : '';
-  const bgColor = avatarColor || colorForSender(id || cleanName || 'user');
+  const bgColor = avatarColor || colorForSender((cleanName || id || 'user').toLowerCase());
 
   if (avatarUrl && !imgError) {
     return (

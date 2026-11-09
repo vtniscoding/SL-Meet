@@ -426,18 +426,18 @@ io.on('connection', (socket) => {
   });
 
   // Real-Time Speech-to-Text Caption Stream (Author attribution enforced by Server)
-  socket.on('speech_caption', ({ roomId, text, isFinal }) => {
+  socket.on('speech_caption', ({ roomId, text, isFinal, avatarColor, avatarUrl }) => {
     if (roomId && rooms.has(roomId) && typeof text === 'string' && text.trim().length > 0) {
       const roomData = rooms.get(roomId);
       if (!roomData.members.has(socket.id)) return;
       const senderMeta = roomData.members.get(socket.id);
       const cleanText = text.trim().slice(0, 500);
 
-      io.in(roomId).emit('speech_caption_stream', {
+      socket.to(roomId).emit('speech_caption_stream', {
         senderId: socket.id,
         senderName: senderMeta?.name || `Speaker ${socket.id.slice(0, 4)}`,
-        avatarColor: senderMeta?.avatarColor || null,
-        avatarUrl: senderMeta?.avatarUrl || null,
+        avatarColor: avatarColor || senderMeta?.avatarColor || null,
+        avatarUrl: avatarUrl || senderMeta?.avatarUrl || null,
         text: cleanText,
         isFinal: !!isFinal,
         timestamp: Date.now(),

@@ -7,14 +7,19 @@ export function getSampleDescriptor(sample) {
   if (isDynamicSample(sample)) {
     const featDim = sample.vector[0]?.length || 70;
     const seqLen = sample.vector.length;
+    const hasFace = featDim === 76 || featDim === 152 || sample.metadata?.feature_version === 2;
     const isTwoHand = featDim >= 130 || sample.type === 'dynamic_two_hands';
     return {
       isDynamic: true,
       isTwoHand,
+      hasFace,
+      featureVersion: hasFace ? 2 : 1,
       badgeText: isTwoHand
-        ? `Dynamic 2H • ${seqLen}×${featDim}D`
-        : `Dynamic 1H • ${seqLen}×${featDim}D`,
-      badgeClass: isTwoHand
+        ? `Dynamic 2H • ${seqLen}×${featDim}D${hasFace ? ' (Face)' : ''}`
+        : `Dynamic 1H • ${seqLen}×${featDim}D${hasFace ? ' (Face)' : ''}`,
+      badgeClass: hasFace
+        ? 'bg-amber-950/80 text-amber-300 border-amber-500/40'
+        : isTwoHand
         ? 'bg-sky-950/80 text-[#5CA0F2] border-[#5CA0F2]/40'
         : 'bg-emerald-950/80 text-emerald-300 border-emerald-500/35',
     };

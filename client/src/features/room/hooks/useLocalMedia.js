@@ -67,6 +67,18 @@ export function useLocalMedia({ isActive = false } = {}) {
     }
   }, []);
 
+  // Listen for hotplugging of audio/video hardware (Bluetooth, USB headsets, cameras)
+  useEffect(() => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.addEventListener) return;
+    const handleDeviceChange = () => {
+      refreshDevices();
+    };
+    navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
+    return () => {
+      navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
+    };
+  }, [refreshDevices]);
+
   // Explicitly stop all hardware media tracks & release devices
   const stopMedia = useCallback(() => {
     isBusyRef.current = false;

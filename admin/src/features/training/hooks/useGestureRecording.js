@@ -7,6 +7,7 @@ import {
   buildDynamicSequence,
   DTW_KEYFRAMES,
   MIN_DYNAMIC_MOTION_AMPLITUDE,
+  FEATURE_FLAGS,
 } from '@sl-meet/shared';
 
 const PREROLL_SECONDS = 3;
@@ -84,6 +85,10 @@ export function useGestureRecording({
         mode: 'dynamic',
         vector: built.sequence,
         dimension: built.featureDim,
+        featureVersion: built.featureVersion || 1,
+        faceCoveragePct: built.faceCoveragePct ?? 0,
+        dominantZone: built.dominantZone || null,
+        meanIndexUV: built.meanIndexUV || null,
         sequenceLength: built.sequence.length,
         keptFrames: built.keptFrames,
         qualityScore: built.qualityScore,
@@ -91,8 +96,16 @@ export function useGestureRecording({
         handCount: built.handCount,
       });
 
+      const faceWarn =
+        FEATURE_FLAGS.FEATURE_FACE && (built.faceCoveragePct ?? 0) < 60
+          ? ` • Warning: Low face coverage (${built.faceCoveragePct}%)`
+          : '';
+      const zoneSuffix = built.dominantZone
+        ? ` • Zone: ${built.dominantZone.toUpperCase()}`
+        : '';
+
       setStatusMsg?.(
-        `Captured Dynamic DTW sequence! (${built.sequence.length}×${built.featureDim}D keyframes from ${built.keptFrames} active frames • Quality ${built.qualityScore}%)`
+        `Captured Dynamic DTW sequence! (${built.sequence.length}×${built.featureDim}D keyframes ${built.hasFace ? '(v2 Face)' : '(v1)'}${zoneSuffix} from ${built.keptFrames} active frames • Quality ${built.qualityScore}%${faceWarn})`
       );
       return;
     }
@@ -130,7 +143,11 @@ export function useGestureRecording({
         classification.smoothedLandmarks || multiHandLandmarks;
 
       if (recordingModeRef.current === 'dynamic') {
-        const dynFrame = extractDynamicFrame(smoothedHands, normalizeMultiHandLandmarks);
+        const dynFrame = extractDynamicFrame(
+          smoothedHands,
+          normalizeMultiHandLandmarks,
+          classification?.activeFaceFrame
+        );
         if (dynFrame) {
           dynamicFramesRef.current.push(dynFrame);
         }

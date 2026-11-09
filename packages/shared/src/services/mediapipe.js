@@ -322,12 +322,12 @@ export function drawHandResults(ctx, results) {
  * @param {Array} multiHandedness - Full list of handedness objects
  * @returns {Object} Recognized gesture info { gesture, confidence }
  */
-export function classifyGesture(landmarks, handedness, multiHandLandmarks, multiHandedness) {
+export function classifyGesture(landmarks, handedness, multiHandLandmarks, multiHandedness, activeFaceFrame = null) {
   const handsList = multiHandLandmarks || (landmarks ? [landmarks] : []);
   const handednessList = multiHandedness || (handedness ? [handedness] : []);
 
   // Delegate even empty frames to dataset classifier so DTW recognizer can finalize end-of-stroke hand drops
-  const datasetResult = classifyLandmarksWithDataset(handsList, handednessList);
+  const datasetResult = classifyLandmarksWithDataset(handsList, activeFaceFrame);
   if (datasetResult) {
     return datasetResult;
   }

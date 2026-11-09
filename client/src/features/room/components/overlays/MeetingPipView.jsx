@@ -48,6 +48,7 @@ export default function MeetingPipView({
   onToggleCamera,
   onToggleCaptions,
   onToggleScreenShare,
+  selectedSpeakerDeviceId = '',
 }) {
   const videoRef = useRef(null);
 
@@ -130,6 +131,13 @@ export default function MeetingPipView({
       videoEl.play().catch(() => {});
     }
   }, [stream, isLocal, p?.isMuted]);
+
+  useEffect(() => {
+    const videoEl = videoRef.current;
+    if (videoEl && !isLocal && selectedSpeakerDeviceId && typeof videoEl.setSinkId === 'function') {
+      videoEl.setSinkId(selectedSpeakerDeviceId).catch(() => {});
+    }
+  }, [selectedSpeakerDeviceId, isLocal]);
 
   return (
     <div

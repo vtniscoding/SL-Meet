@@ -58,11 +58,15 @@ export function mergeCaptionEntries(prevEntries = [], incoming = null, maxEntrie
 
   const now = Date.now();
   const entryId = `${incoming.senderId || 'unknown'}-${incoming.timestamp || now}`;
+  const cleanSenderKey = (incoming.senderName || incoming.senderId || 'unknown')
+    .replace(/\s*\(You\)/i, '')
+    .trim()
+    .toLowerCase();
   const newEntry = {
     id: entryId,
     senderId: incoming.senderId || 'unknown',
     senderName: incoming.senderName || 'Speaker',
-    avatarColor: incoming.avatarColor || (incoming.senderId ? colorForSender(incoming.senderId) : C.SPEAKER_COLORS[0]),
+    avatarColor: incoming.avatarColor || (cleanSenderKey ? colorForSender(cleanSenderKey) : C.SPEAKER_COLORS[0]),
     avatarUrl: incoming.avatarUrl || null,
     text: incoming.text.trim(),
     isFinal: !!incoming.isFinal,
@@ -86,8 +90,8 @@ export function mergeCaptionEntries(prevEntries = [], incoming = null, maxEntrie
       ...updated[lastSenderIdx],
       text: newEntry.text,
       isFinal: newEntry.isFinal,
-      avatarColor: newEntry.avatarColor || updated[lastSenderIdx].avatarColor,
-      avatarUrl: newEntry.avatarUrl || updated[lastSenderIdx].avatarUrl,
+      avatarColor: updated[lastSenderIdx].avatarColor || newEntry.avatarColor,
+      avatarUrl: updated[lastSenderIdx].avatarUrl || newEntry.avatarUrl,
       shownAt: now,
     };
     return updated;
@@ -96,7 +100,11 @@ export function mergeCaptionEntries(prevEntries = [], incoming = null, maxEntrie
   // Previous was interim from this sender -> replace with current update
   if (lastSenderIdx !== -1 && !prevEntries[lastSenderIdx].isFinal) {
     const updated = [...prevEntries];
-    updated[lastSenderIdx] = newEntry;
+    updated[lastSenderIdx] = {
+      ...newEntry,
+      avatarColor: prevEntries[lastSenderIdx].avatarColor || newEntry.avatarColor,
+      avatarUrl: prevEntries[lastSenderIdx].avatarUrl || newEntry.avatarUrl,
+    };
     return updated;
   }
 

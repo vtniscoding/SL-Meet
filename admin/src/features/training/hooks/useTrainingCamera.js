@@ -4,6 +4,8 @@ import {
   subscribeMediaPipeResults,
   classifyGesture,
   HandMotionCameraTracker,
+  FEATURE_FLAGS,
+  globalFaceTracker,
 } from '@sl-meet/shared';
 
 const isVirtualCamera = (label = '') => {
@@ -335,6 +337,13 @@ export function useTrainingCamera({
           isProcessingFrameRef.current = true;
           try {
             await hands.send({ image: video });
+            if (FEATURE_FLAGS.FEATURE_FACE) {
+              const activeHands = (latestTrackingPayloadRef.current?.results?.multiHandLandmarks || []).map((lm) => ({
+                wrist: lm[0],
+                indexTip: lm[8],
+              }));
+              await globalFaceTracker.processFrame(video, activeHands);
+            }
           } catch (err) {
             // Ignore transient frame errors during camera warm-up
           } finally {

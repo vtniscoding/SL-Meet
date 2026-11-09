@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import MeetingVideoTile from './MeetingVideoTile';
 import { ParticipantsDrawerIcon as Users } from '@sl-meet/shared/icons';
 
@@ -30,6 +30,7 @@ export default function MeetingLayoutEngine({
   userRole = 'non_signer',
   isSttActive = false,
   onRegisterCanvas,
+  selectedSpeakerDeviceId = '',
 }) {
   const pinnedParticipant = participants?.find((p) => p.id === pinnedId);
   const activeSpeaker = participants?.find((p) => p.isSpeaking && !p.isMuted) || participants?.find((p) => p.isActiveSpeaker);
@@ -85,6 +86,7 @@ export default function MeetingLayoutEngine({
                   captionData={getTileCaptionData(p)}
                   isHandTrackingEnabled={p.isLocal ? isHandTrackingEnabled : false}
                   onRegisterCanvas={onRegisterCanvas}
+                  selectedSpeakerDeviceId={selectedSpeakerDeviceId}
                 />
               </div>
             ))}
@@ -102,6 +104,7 @@ export default function MeetingLayoutEngine({
                 captionData={getTileCaptionData(mainParticipant)}
                 isHandTrackingEnabled={mainParticipant.isLocal ? isHandTrackingEnabled : false}
                 onRegisterCanvas={onRegisterCanvas}
+                selectedSpeakerDeviceId={selectedSpeakerDeviceId}
               />
             </div>
           </div>
@@ -122,6 +125,7 @@ export default function MeetingLayoutEngine({
             captionData={getTileCaptionData(mainParticipant)}
             isHandTrackingEnabled={mainParticipant.isLocal ? isHandTrackingEnabled : false}
             onRegisterCanvas={onRegisterCanvas}
+            selectedSpeakerDeviceId={selectedSpeakerDeviceId}
           />
         </div>
       </div>
@@ -151,6 +155,7 @@ export default function MeetingLayoutEngine({
               captionData={getTileCaptionData(mainParticipant)}
               isHandTrackingEnabled={mainParticipant.isLocal ? isHandTrackingEnabled : false}
               onRegisterCanvas={onRegisterCanvas}
+              selectedSpeakerDeviceId={selectedSpeakerDeviceId}
             />
           </div>
         </div>
@@ -174,6 +179,7 @@ export default function MeetingLayoutEngine({
                 captionData={getTileCaptionData(p)}
                 isHandTrackingEnabled={p.isLocal ? isHandTrackingEnabled : false}
                 onRegisterCanvas={onRegisterCanvas}
+                selectedSpeakerDeviceId={selectedSpeakerDeviceId}
               />
             </div>
           ))}
@@ -232,6 +238,7 @@ export default function MeetingLayoutEngine({
               captionData={getTileCaptionData(p)}
               isHandTrackingEnabled={p.isLocal ? isHandTrackingEnabled : false}
               onRegisterCanvas={onRegisterCanvas}
+              selectedSpeakerDeviceId={selectedSpeakerDeviceId}
             />
           </div>
         ))}

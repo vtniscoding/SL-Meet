@@ -7,7 +7,7 @@ import {
   CameraOffIcon,
   HandTrackingOnIcon,
 } from '@sl-meet/shared/icons';
-import { HandMotionCameraTracker } from '@sl-meet/shared';
+import { HandMotionCameraTracker, FEATURE_FLAGS, setFeatureFace } from '@sl-meet/shared';
 
 /**
  * Detached OS Companion Window for 2-Hand Camera Auto-Follow Motion Tracking.
@@ -26,6 +26,9 @@ export default function HandMotionWindow({
   const [portalContainer, setPortalContainer] = useState(null);
   const [useInlineFallback, setUseInlineFallback] = useState(false);
   const [isAutoFollow, setIsAutoFollow] = useState(true);
+  const [featureFaceActive, setFeatureFaceActive] = useState(
+    () => FEATURE_FLAGS.FEATURE_FACE
+  );
   const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(true);
   const [hudStats, setHudStats] = useState({
     handCount: 0,
@@ -328,6 +331,24 @@ export default function HandMotionWindow({
           style={{ WebkitAppRegion: 'no-drag' }}
           className="flex items-center space-x-1 shrink-0"
         >
+          {/* Face-Relative Spatial Tracking Toggle */}
+          <button
+            type="button"
+            onClick={() => {
+              const next = !featureFaceActive;
+              setFeatureFace(next);
+              setFeatureFaceActive(next);
+            }}
+            className={`h-6 px-2 rounded-md text-[10px] font-semibold flex items-center justify-center transition-colors cursor-pointer outline-none ${
+              featureFaceActive
+                ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40'
+                : 'bg-[#3C4043] hover:bg-[#474B4F] text-slate-400 hover:text-slate-200'
+            }`}
+            title="Toggle Face-Relative Spatial Tracking (FEATURE_FACE)"
+          >
+            {featureFaceActive ? 'Face ON' : 'Face OFF'}
+          </button>
+
           {/* Auto-Follow Camera Toggle */}
           <button
             type="button"
